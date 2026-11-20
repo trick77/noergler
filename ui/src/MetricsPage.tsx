@@ -551,12 +551,25 @@ export function MetricsPage() {
   // unpriced runs leans low on cost, one with runs from before the LOC
   // count leans low on lines, and either would print a drop that is not.
   // A tile that shows a dash has no change beside it either.
+  //
+  // Coloured by direction, every tile alike (user, 2026-11-20): up green,
+  // down red, a change that rounds to ±0 % stays muted. Cost up is green
+  // too: a hue that flips per tile would have to be learned per tile.
   const prev = data.previous ?? null;
   const changeOf = (now: number, before: number, whole = true) => {
     if (prev === null || !whole) return undefined;
     const c = change(now, before);
-    return c === null ? undefined : (
-      <span title={t("metrics.changeTitle", { count: window.length })}>
+    if (c === null) return undefined;
+    const hue = c.startsWith("+")
+      ? "text-online"
+      : c.startsWith("−")
+        ? "text-danger-ink"
+        : undefined;
+    return (
+      <span
+        className={hue}
+        title={t("metrics.changeTitle", { count: window.length })}
+      >
         {c}
       </span>
     );

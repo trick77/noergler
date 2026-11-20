@@ -816,6 +816,10 @@ describe("MetricsPage", () => {
     expect(cost?.textContent).toBe("$1.25");
     expect(screen.getByText("−50 %")).toBeDefined();
     expect(screen.getByText("±0 %")).toBeDefined();
+    // Coloured by direction alone, cost included; no change stays muted.
+    expect(screen.getByText("+25 %").className).toBe("text-online");
+    expect(screen.getByText("−50 %").className).toBe("text-danger-ink");
+    expect(screen.getByText("±0 %").className).toBe("");
     // No lines before: no percentage to print.
     expect(screen.getAllByTitle(/before, up to the same time/)).toHaveLength(3);
   });
