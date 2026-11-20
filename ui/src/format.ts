@@ -63,12 +63,20 @@ export function isWeekend(day: string): boolean {
   return dow === 0 || dow === 6;
 }
 
+/** changePct is the step from `before` to `now` in whole percent, or null
+ *  where a zero before has no percentage. A caller colouring the change
+ *  reads its sign here, never off change()'s text. */
+export function changePct(now: number, before: number): number | null {
+  if (!(before > 0) || !Number.isFinite(now)) return null;
+  return Math.round(((now - before) / before) * 100);
+}
+
 /** change is the step from `before` to `now` as a signed whole percent
  *  ("+13 %", "−4 %", "±0 %"), or null where there is nothing to compare
  *  against: a zero before has no percentage. */
 export function change(now: number, before: number): string | null {
-  if (!(before > 0) || !Number.isFinite(now)) return null;
-  const pct = Math.round(((now - before) / before) * 100);
+  const pct = changePct(now, before);
+  if (pct === null) return null;
   const sign = pct > 0 ? "+" : pct < 0 ? "−" : "±";
   return `${sign}${num(Math.abs(pct))} %`;
 }

@@ -448,6 +448,41 @@ describe("Chart", () => {
       expect(bar.getAttribute("fill-opacity")).toBe("0.55");
   });
 
+  // A trend that ends before the last bucket (the metrics page stops it on
+  // yesterday) keeps its label in the right padding, clear of the last bar;
+  // the dot stays on the trend's last point.
+  it("keeps the trend label past the last bar", () => {
+    const { container } = render(
+      <Chart
+        series={s1([4, 6, 8, 2])}
+        trend={{
+          values: [null, 5, 7, null],
+          color: "var(--color-ink)",
+          format: (v) => `~${v}`,
+        }}
+        width={300}
+        height={120}
+        mark="bar"
+        ticks={[0, 10]}
+        label="bars"
+        partialLast
+      />,
+    );
+    const el = svg(container);
+    const label = Array.from(el.querySelectorAll("text")).find(
+      (t) => t.textContent === "~7",
+    );
+    const labelX = Number(label?.getAttribute("x"));
+    const barRight = Math.max(
+      ...Array.from(el.querySelectorAll("rect")).map(
+        (r) => Number(r.getAttribute("x")) + Number(r.getAttribute("width")),
+      ),
+    );
+    expect(labelX).toBeGreaterThan(barRight);
+    const dot = Number(el.querySelector("circle")?.getAttribute("cx"));
+    expect(dot).toBeLessThan(barRight);
+  });
+
   it("draws no trend from a single point", () => {
     const { container } = render(
       <Chart
