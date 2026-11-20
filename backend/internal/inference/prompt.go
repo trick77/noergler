@@ -180,6 +180,24 @@ const CumulativeUnavailable = "## Cumulative PR diff (cross-file context only)\n
 	"Not available for this review. The focused review files are the latest push only, " +
 	"not the whole PR; the summary still describes the whole PR from what is shown."
 
+// numberCumulative gives each file of the cumulative diff the line gutter
+// the focused files carry (diff.NumberDiff works on one file: across files
+// it would number a `+++ b/` header). review_focus may name an earlier
+// push's line from it and ValidateFocus accepts any line the diff shows, so
+// a line the model counted from a hunk header could land one off and pass.
+//
+// It splits as the history index does (diff.SplitByFile), so gutter and
+// index agree. A hunk line holding U+2028 or a form feed right before
+// `diff --git ` cuts its file there and leaves the rest without a gutter:
+// accepted, the index splits it the same way.
+func numberCumulative(cumulative string) string {
+	var b strings.Builder
+	for _, part := range diff.SplitByFile(cumulative) {
+		b.WriteString(diff.NumberDiff(part))
+	}
+	return b.String()
+}
+
 // RenderCumulativePRDiff wraps the PR diff as cross-file context only.
 //
 // partial says anything of the PR is missing from cumulative, filtered or
@@ -201,6 +219,7 @@ func RenderCumulativePRDiff(cumulative string, partial bool, omitted []string) s
 				"the reviewable files closest to the focused changes. "
 		}
 		block += scope +
+			"Each file's diff carries its new-file line numbers in a left gutter, as in the focused files. " +
 			"Use it ONLY to verify cross-file invariants (e.g. that a renamed entity field " +
 			"also has its repository methods/queries renamed elsewhere in the PR). " +
 			"DO NOT raise findings about lines that are not in the focused review files above. " +
@@ -208,7 +227,7 @@ func RenderCumulativePRDiff(cumulative string, partial bool, omitted []string) s
 			"as already-resolved context — the focused review files are the sole subject of review.\n" +
 			"\n" +
 			"<cumulative_pr_diff>\n" +
-			cumulative + "\n" +
+			numberCumulative(cumulative) + "\n" +
 			"</cumulative_pr_diff>"
 	} else {
 		block += "The rest of this PR is too large to show. The focused review files are the sole subject of review."

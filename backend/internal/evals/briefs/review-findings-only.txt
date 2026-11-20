@@ -127,6 +127,7 @@ Illustrative only — do not treat as code under review.
   "security_performance": "None notable.",
   "test_coverage": "-",
   "verdict": {"decision": "approve", "rationale": "-"},
+  "review_focus": [],
   "findings": [
     {
       "file": "app/handlers/users.py",
@@ -159,6 +160,7 @@ Illustrative only — do not treat as code under review.
   "security_performance": "None notable.",
   "test_coverage": "-",
   "verdict": {"decision": "approve", "rationale": "-"},
+  "review_focus": [],
   "findings": [],
   "fixed": [],
   "pre_existing": [],
