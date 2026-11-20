@@ -182,18 +182,24 @@ The screenshot stays summary only (INVARIANTS: test screenshots); the
 sentence keeps a code bug from leaving `findings` because an image shows it
 too.
 
-## A fence inside a reviewed file (2026-11-19)
+## A fence inside a reviewed file (2026-11-20)
 
 Question: does a ``` in a reviewed file, which closed the prompt's block
 early before the block fence followed the file, cost recall?
 
-mimo-v2.6-pro high, `fenced-docstring` (rev13) alone, five samples a side
-(`sampled/…-fence-before`, `…-fence-fixed`): caught 5 of 5 both ways.
+mimo-v2.6-pro high, `fenced-docstring` (rev15) alone, five samples a side,
+both on master, the before arm with only `blockFence` pinned to three
+backticks (`sampled/2026-11-20-…-fence-before`, `…-fence-fixed`; prompts
+5988 against 5989 tokens): caught 5 of 5 both ways.
 
-- On a short file the model reads past a broken block. The fix stays as
-  hygiene: a longer file, or one whose fence opens text that looks like an
-  instruction, is not measured.
-- run15, the first full rev13 run, caught the case at line 14.
+- A file block that closes early costs nothing while the diff carries the
+  bug: in the before arm the file's own closing fence opens a stray block
+  that swallows the `### Changes` header and runs to the diff's end, so the
+  changed line stays fenced, and every finding anchored on it (line 16).
+  Code seen only as loose prompt text is not measured, and cannot be on a
+  bug in the diff. The fix stays as hygiene.
+- The 2026-11-19 pair shows nothing: rev13's fences were indented, which
+  closes no block, and its before arm was an older prompt.
 
 ## Blocking rules (2026-11-15)
 
@@ -287,7 +293,6 @@ The run2 wrong (`42afcb954b`) passes it: no base line is kept.
 
 ## Known gaps
 
-- `lock-not-released` keywords miss correct findings; inflates `extra`.
 - `visual-hidden-submit` `button-gone` keywords miss correct lines worded
   "drops" or "loses" the button.
 - Validator dropped 3 correct mini findings (`evidence_not_found`): two

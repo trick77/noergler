@@ -1,0 +1,495 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 5,
+ "Seeded": 1,
+ "Cases": [
+  {
+   "Case": "fenced-docstring",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "fenced-docstring",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "export/batching.py",
+       "Line": 16,
+       "Severity": "issue",
+       "Comment": "The upper bound of `range` was changed to `len(items) - size`, so the final partial chunk is never produced: `chunk([1, 2, 3, 4, 5], 2)` now returns `[[1, 2], [3, 4]]` and drops `[5]`, and when `len(items)` is an exact multiple of `size` the slice `items[i:i + size]` never runs at all, returning `[]`. This also silently drops the tail of every export: `batches(rows, 500)` feeds the same list to `chunk`, so a 1200-row export uploads only the first 500 rows. It also contradicts the module's own doctest example, which documents `chunk([1, 2, 3, 4, 5], 2)` as `[[1, 2], [3, 4], [5]]`.",
+       "Confidence": 95,
+       "Headline": "chunk() drops the trailing partial batch of exported rows",
+       "Suggestion": "    return [items[i:i + size] for i in range(0, len(items), size)]",
+       "Evidence": [
+        "\u003e\u003e\u003e chunk([1, 2, 3, 4, 5], 2)",
+        "[[1, 2], [3, 4], [5]]",
+        "    return [items[i:i + size] for i in range(0, len(items) - size, size)]",
+        "def batches(rows, size=500):",
+        "    yield from chunk(rows, size)"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "last-chunk-dropped",
+        "file": "export/batching.py",
+        "lines": [
+         12,
+         21
+        ],
+        "keywords": [
+         "last chunk",
+         "final chunk",
+         "last batch",
+         "final batch",
+         "trailing chunk",
+         "trailing batch",
+         "remainder",
+         "remaining items",
+         "last items",
+         "last element",
+         "len(items) - size",
+         "one step early",
+         "off-by-one",
+         "off by one"
+        ],
+        "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. batches() hands every export through chunk, so the last rows of every export never reach the API. The module docstring's own example says the tail chunk is kept."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 5989,
+      "CachedTokens": 4096,
+      "CompletionTokens": 1279,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "fenced-docstring",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "export/batching.py",
+       "Line": 16,
+       "Severity": "issue",
+       "Comment": "`chunk` now iterates `range(0, len(items) - size, size)`, which stops `size` elements short of the end, so the tail of every input is dropped. `chunk([1, 2, 3, 4, 5], 2)` returns `[[1, 2], [3, 4]]` instead of the documented `[[1, 2], [3, 4], [5]]`, and when `len(items)` is an exact multiple of `size` — e.g. `chunk([1, 2, 3, 4], 2)` — the range is empty and nothing is returned at all. Since `batches()` delegates to `chunk`, the export job silently loses rows (the whole batch when the row count is a multiple of `size`), which is data loss on the export path.",
+       "Confidence": 96,
+       "Headline": "chunk() range bound drops the trailing batch of items",
+       "Suggestion": "    return [items[i:i + size] for i in range(0, len(items), size)]",
+       "Evidence": [
+        "\u003e\u003e\u003e chunk([1, 2, 3, 4, 5], 2)",
+        "[[1, 2], [3, 4], [5]]",
+        "    return [items[i:i + size] for i in range(0, len(items) - size, size)]",
+        "def batches(rows, size=500):",
+        "    yield from chunk(rows, size)"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "last-chunk-dropped",
+        "file": "export/batching.py",
+        "lines": [
+         12,
+         21
+        ],
+        "keywords": [
+         "last chunk",
+         "final chunk",
+         "last batch",
+         "final batch",
+         "trailing chunk",
+         "trailing batch",
+         "remainder",
+         "remaining items",
+         "last items",
+         "last element",
+         "len(items) - size",
+         "one step early",
+         "off-by-one",
+         "off by one"
+        ],
+        "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. batches() hands every export through chunk, so the last rows of every export never reach the API. The module docstring's own example says the tail chunk is kept."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 5989,
+      "CachedTokens": 5888,
+      "CompletionTokens": 1558,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "fenced-docstring",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "export/batching.py",
+       "Line": 16,
+       "Severity": "issue",
+       "Comment": "The new stop value `len(items) - size` truncates the iteration, so `chunk` silently drops trailing elements. With the module's own example `chunk([1, 2, 3, 4, 5], 2)` the range is `range(0, 3, 2)` and the result is `[[1, 2], [3, 4]]`, losing `[5]`; when the length divides evenly, e.g. `chunk([1, 2, 3, 4], 2)`, the last full batch `[3, 4]` is lost too. Since `batches()` yields these chunks as the export rows sent to the API, any row beyond the first `n - size` elements is never exported.",
+       "Confidence": 97,
+       "Headline": "chunk drops the trailing elements of every batch",
+       "Suggestion": "return [items[i:i + size] for i in range(0, len(items), size)]",
+       "Evidence": [
+        "def chunk(items, size):",
+        "    \"\"\"Split items into lists of at most size elements.\"\"\"",
+        "    if size \u003c 1:",
+        "        raise ValueError(\"size must be positive\")",
+        "    return [items[i:i + size] for i in range(0, len(items) - size, size)]"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "last-chunk-dropped",
+        "file": "export/batching.py",
+        "lines": [
+         12,
+         21
+        ],
+        "keywords": [
+         "last chunk",
+         "final chunk",
+         "last batch",
+         "final batch",
+         "trailing chunk",
+         "trailing batch",
+         "remainder",
+         "remaining items",
+         "last items",
+         "last element",
+         "len(items) - size",
+         "one step early",
+         "off-by-one",
+         "off by one"
+        ],
+        "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. batches() hands every export through chunk, so the last rows of every export never reach the API. The module docstring's own example says the tail chunk is kept."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 5989,
+      "CachedTokens": 5888,
+      "CompletionTokens": 769,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "fenced-docstring",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "export/batching.py",
+       "Line": 16,
+       "Severity": "issue",
+       "Comment": "The `range` stop is now `len(items) - size`, so any tail shorter than a full batch — and, when `len(items)` is an exact multiple of `size`, the entire final batch — is never sliced. `chunk([1, 2, 3, 4, 5], 2)` returns `[[1, 2], [3, 4]]`, dropping `[5]`; `chunk([1, 2, 3, 4], 2)` returns only `[[1, 2]]`; `chunk([1, 2, 3], 3)` returns `[]`. Since `batches()` yields straight from `chunk()`, every export whose row count is a multiple of the batch size (the default 500 included) silently loses its last batch, and a short row list loses all rows.",
+       "Confidence": 95,
+       "Headline": "chunk() drops the final batch (and any short tail) from exports",
+       "Suggestion": "    return [items[i:i + size] for i in range(0, len(items), size)]",
+       "Evidence": [
+        "\u003e\u003e\u003e chunk([1, 2, 3, 4, 5], 2)",
+        "[[1, 2], [3, 4], [5]]",
+        "\"\"\"Split items into lists of at most size elements.\"\"\"",
+        "    return [items[i:i + size] for i in range(0, len(items) - size, size)]",
+        "    yield from chunk(rows, size)"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "last-chunk-dropped",
+        "file": "export/batching.py",
+        "lines": [
+         12,
+         21
+        ],
+        "keywords": [
+         "last chunk",
+         "final chunk",
+         "last batch",
+         "final batch",
+         "trailing chunk",
+         "trailing batch",
+         "remainder",
+         "remaining items",
+         "last items",
+         "last element",
+         "len(items) - size",
+         "one step early",
+         "off-by-one",
+         "off by one"
+        ],
+        "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. batches() hands every export through chunk, so the last rows of every export never reach the API. The module docstring's own example says the tail chunk is kept."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 5989,
+      "CachedTokens": 5888,
+      "CompletionTokens": 1319,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "fenced-docstring",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "export/batching.py",
+       "Line": 16,
+       "Severity": "issue",
+       "Comment": "The new `range(0, len(items) - size, size)` stop bound skips the final iteration(s) of the list comprehension, so `chunk` silently drops a trailing partial chunk — and drops everything when `len(items) \u003c= size`. `chunk([1, 2, 3, 4, 5], 2)` now returns `[[1, 2], [3, 4]]` instead of the `[[1, 2], [3, 4], [5]]` the module docstring promises, and `chunk(rows, 500)` in `batches` loses up to 499 trailing export rows (or the entire payload when there are 500 or fewer rows), i.e. data loss on every export run whose row count is not a multiple of the batch size.",
+       "Confidence": 98,
+       "Headline": "chunk() drops the trailing partial batch",
+       "Suggestion": "    return [items[i:i + size] for i in range(0, len(items), size)]",
+       "Evidence": [
+        "\u003e\u003e\u003e chunk([1, 2, 3, 4, 5], 2)",
+        "[[1, 2], [3, 4], [5]]",
+        "    return [items[i:i + size] for i in range(0, len(items) - size, size)]"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "last-chunk-dropped",
+        "file": "export/batching.py",
+        "lines": [
+         12,
+         21
+        ],
+        "keywords": [
+         "last chunk",
+         "final chunk",
+         "last batch",
+         "final batch",
+         "trailing chunk",
+         "trailing batch",
+         "remainder",
+         "remaining items",
+         "last items",
+         "last element",
+         "len(items) - size",
+         "one step early",
+         "off-by-one",
+         "off by one"
+        ],
+        "why": "range(0, len(items) - size, size) stops one step early: for five items and size 2 it yields starts 0 and 2 only, so [5] is lost, and for four items [3, 4] is. batches() hands every export through chunk, so the last rows of every export never reach the API. The module docstring's own example says the tail chunk is kept."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 5989,
+      "CachedTokens": 5888,
+      "CompletionTokens": 1126,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  }
+ ],
+ "Views": [
+  {
+   "Name": "single",
+   "Calls": 1,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "agree2",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "either2",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "vote3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "tiered3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "union3",
+   "Calls": 3,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  },
+  {
+   "Name": "adaptive",
+   "Calls": 2,
+   "Caught": 1,
+   "Extra": 0,
+   "AllCaught": 1,
+   "ControlsClean": 1,
+   "CostMultiple": null
+  }
+ ],
+ "Agreement": [
+  {
+   "Votes": 1,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 2,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 3,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 4,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 5,
+   "Real": 1,
+   "RealIssue": 1,
+   "Invented": 0,
+   "InventedIssue": 0
+  }
+ ],
+ "Tokens": {
+  "ColdPrompt": 5989,
+  "ColdCached": 4096,
+  "ColdCompletion": 1279,
+  "WarmPrompt": 5989,
+  "WarmCached": 5888,
+  "WarmCompletion": 1193
+ }
+}

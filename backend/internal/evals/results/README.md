@@ -102,6 +102,7 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-11-19 | mimo-v2.6-pro | high | 37 rev12 | 29 | 29 | 0 | as run13 | **run14, confirms run13.** Clean again. 14 runs today, ~$0.80 in all. |
 | 2026-11-19 | mimo-v2.6-pro | high | 38 rev13 | 30 | 28 | 2 | `prompts/review.txt` @ c380d8f, block fence longer than any in the file | **run15: new revision (`fenced-docstring`), new baseline.** Exit 1, complete, no redraw. `fenced-docstring` caught at line 14. `lock-not-released` reported correctly at line 20 ("leaves the mutex locked"), worded outside its keywords: known gap, one Extra. `visual-hidden-submit`'s code bug missed, its screenshot line seen. The other Extra and the false task: `blocking-float-money` split one defect into two B1 tasks (lines 14 and 16), the run9 shape. Controls clean. $0.040, 39 calls. |
 | 2026-11-19 | mimo-v2.6-pro | high | 38 rev14 | 30 | 29 | 0 | as run15 | **run16: `lock-not-released` keywords widened, new baseline.** Exit 1, complete, no redraw. `lock-not-released` caught at line 20, `fenced-docstring` at line 14, `visual-hidden-submit` both. The miss is `blocking-pii-log`, no finding at all (caught in every rev11 to rev13 row before). No Extra, no false task, controls clean. $0.041, 39 calls. |
+| 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 29 | 1 | `prompts/review.txt` @ 436b202 | **run1: `fenced-docstring` rebuilt, new baseline.** Exit 1, complete, one redraw (`ts-seeded`). `fenced-docstring` caught at line 16, `lock-not-released` and `blocking-pii-log` caught. The miss is `blocking-float-money`, no finding at all. The Extra is a second `ts-seeded` finding, category `contradiction`, restating the missing `await` against the doc comment (the run8 shape). No false task, controls clean. $0.063, 40 calls. |
 
 ## What the columns mean
 
@@ -153,8 +154,15 @@ several reviews. Those live in `sampled/` and are never rows here.
   holding a ```` ```python ```` example right above a dropped last chunk, the
   fence in the file and in the diff, taking it to 38 with 30 seeded. `rev14`
   widens `lock-not-released`'s keywords to "the mutex held/locked" wording,
-  three times a correct finding scored a miss (rev8 run5, the sampled
-  rev6 runs, run15). Sampled runs score findings only. Bump the number when a
+  after a correct finding scored a miss at least five times (rev8 run5,
+  run15, the sampled rev5 mini, rev6 and rev6-merge runs). `rev15`
+  rebuilds `fenced-docstring`: rev13's fences sat indented in a function
+  docstring, where CommonMark closes no block, so it never broke one. The
+  fence is now at column 0 in the module docstring and in the file content
+  only: the diff carries none. The window covers `batches()`, and the
+  keywords are prose naming the chunk, no code literal (a quoted line would
+  score whatever it said); every rev15 finding committed with this revision
+  scores the same under them. Sampled runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`,
   `expected_fixed`, `repeats`, and anything in the `incremental` block.
   Prose does not move a score, so an edit to `description` or `why` is not a
