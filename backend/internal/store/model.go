@@ -273,7 +273,10 @@ type LLMCall struct {
 	CallID        string
 	GatewayVer    string
 
-	InputTokens         *int64
+	InputTokens *int64
+	// InputUncachedTokens is the full-rate lane: InputTokens minus cache
+	// reads and cache writes, on both wire shapes (llmwire v0.5.0; before,
+	// writes stayed in it on the OpenAI shape).
 	InputUncachedTokens *int64
 	CacheReadTokens     *int64
 	CacheWriteTokens    *int64

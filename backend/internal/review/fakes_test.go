@@ -1210,11 +1210,16 @@ func (f *fakeLLM) Ready() bool           { return f.ready }
 func (f *fakeLLM) ContextWindow() int    { return f.window }
 func (f *fakeLLM) InputTokenBudget() int { return f.budget }
 
-// TimeoutOf is the production client's rule: a stream bound when its
-// sentinel is in err, else the call cap, the production default unless a
-// test sets its own.
+// TimeoutOf is the production client's rule: the call cap when its sentinel
+// is in err, else a stream bound when its sentinel is, else the call cap, the
+// production default unless a test sets its own.
 func (f *fakeLLM) TimeoutOf(err error) time.Duration {
+	capped := errors.Is(err, llmwire.ErrCallCap)
 	switch {
+	case capped && f.timeout != 0:
+		return f.timeout
+	case capped:
+		return config.DefaultCallTimeout
 	case errors.Is(err, llmwire.ErrStreamIdle):
 		return inference.IdleTimeout
 	case errors.Is(err, llmwire.ErrNoResponseHeaders):

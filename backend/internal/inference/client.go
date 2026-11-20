@@ -190,9 +190,14 @@ const (
 
 // TimeoutOf is the bound behind a timed-out call, for the notice and the log
 // line that quote it: the header or idle bound when one of those fired, the
-// call cap otherwise.
+// call cap otherwise. The cap is asked first: a cap shorter than
+// HeaderTimeout that fires while the headers are still awaited carries both
+// ErrCallCap and ErrNoResponseHeaders (llmwire v0.3.5), and the cap is what
+// stopped the call.
 func (c *Client) TimeoutOf(err error) time.Duration {
 	switch {
+	case errors.Is(err, llmwire.ErrCallCap):
+		return c.timeout
 	case errors.Is(err, llmwire.ErrStreamIdle):
 		return IdleTimeout
 	case errors.Is(err, llmwire.ErrNoResponseHeaders):
