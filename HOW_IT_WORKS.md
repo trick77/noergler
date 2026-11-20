@@ -389,8 +389,9 @@ review's push sentence is not shown. Its sections, in order:
 3. Overview
 4. Review focus: up to three places of the diff a person should read first,
    each `file:line` and one sentence (`review_focus`). Code keeps a place only
-   when the file was in the prompt and the line is one the focused diff
-   shows; a dropped one is logged. Never a finding, never the verdict
+   when the file was in the prompt and the line is one its diff shows: the
+   focused diff, or on an incremental review the cumulative PR diff, both
+   with a line-number gutter; a dropped one is logged. Never a finding, never the verdict
 5. Security and performance, only when it names something
 6. Test coverage, only when it says something beyond "not assessable"
 7. Strengths, only when there is one

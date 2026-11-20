@@ -112,13 +112,16 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 	used := 0
 	for _, f := range ranked {
 		remaining := budget - used
+		// The prompt shows each file with its line gutter
+		// (inference.RenderCumulativePRDiff), so the budget weighs that form.
+		shown := diff.NumberDiff(f.Diff)
 		// Tokenizing expands the text in RAM, so a part over what is left by
 		// byte count alone is never tokenized.
-		if len(f.Diff) > remaining*bytesPerTokenCeiling {
+		if len(shown) > remaining*bytesPerTokenCeiling {
 			omitted = append(omitted, f)
 			continue
 		}
-		n := r.tokens.Count(f.Diff)
+		n := r.tokens.Count(shown)
 		if n > remaining {
 			omitted = append(omitted, f)
 			continue

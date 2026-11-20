@@ -146,6 +146,23 @@ func TestRenderCumulativePRDiff(t *testing.T) {
 		}
 	})
 
+	// review_focus may name an earlier push's line from this block, and
+	// ValidateFocus accepts any line the diff shows: a line counted from the
+	// hunk header instead of read could land one off and pass. Each file is
+	// numbered on its own; a `+++ b/` header of the second file is no line.
+	t.Run("numbers each file's lines", func(t *testing.T) {
+		cumulative := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -9,2 +9,2 @@\n ctx\n+add\n" +
+			"diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -100,1 +100,2 @@\n keep\n+new"
+		got := RenderCumulativePRDiff(cumulative, false, nil)
+		want := "<cumulative_pr_diff>\n" +
+			"diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -9,2 +9,2 @@\n 9  ctx\n10 +add\n" +
+			"diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -100,1 +100,2 @@\n100  keep\n101 +new\n" +
+			"</cumulative_pr_diff>"
+		if !strings.Contains(got, want) {
+			t.Errorf("cumulative diff not numbered per file:\n%s", got)
+		}
+	})
+
 	// Model-facing: a partial block that claims to be the entire PR makes a
 	// counterpart the budget left out look like a rename nobody finished.
 	t.Run("omitted files are named and the block stops claiming the whole PR", func(t *testing.T) {

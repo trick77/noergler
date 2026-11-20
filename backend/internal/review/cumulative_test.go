@@ -217,6 +217,25 @@ func TestCumulativeDiffOmitsWhatDoesNotFitAndKeepsTheRest(t *testing.T) {
 	}
 }
 
+// The prompt shows the cumulative diff with a line gutter, so the budget
+// weighs that form: 3,000 one-character lines fit raw (~2,300 fake tokens)
+// and not numbered (~6,000), where "1234 +a" is more than twice "+a".
+func TestCumulativeBudgetWeighsTheNumberedDiff(t *testing.T) {
+	lines := make([]string, 3000)
+	for i := range lines {
+		lines[i] = "a"
+	}
+	prompt, logs := runIncremental(t, addedFileDiff("gutter.go", lines...)+sampleDiff)
+	block := cumulativeBlock(t, prompt)
+
+	if strings.Contains(block, "+a\n") {
+		t.Error("a file over budget once numbered reached the cumulative block")
+	}
+	if !strings.Contains(logs, "1 omitted for budget (largest: gutter.go ") {
+		t.Errorf("log does not name the file omitted for its numbered size:\n%s", logs)
+	}
+}
+
 // A push large enough lifts the budget off the floor, up to the ceiling.
 func TestCumulativeBudgetFollowsThePush(t *testing.T) {
 	h := incrementalHarness(t, func(h *harness) {
