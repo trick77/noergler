@@ -38,7 +38,9 @@ export default function App() {
     document.title =
       route === "pr"
         ? `${pr?.n == null ? t("pr.title") : t("run.title")} · noergler`
-        : `${t(`nav.${route}`)} · noergler`;
+        : // The tab names the page as its heading does; the nav says
+          // only "Metrics" (user, 2026-11-20).
+          `${route === "metrics" ? t("metrics.title") : t(`nav.${route}`)} · noergler`;
   }, [route, pr, t]);
 
   const go = (page: Exclude<Page, "pr">) => {

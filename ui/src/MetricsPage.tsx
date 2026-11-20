@@ -205,7 +205,7 @@ export function MetricsPage() {
     return (
       <div className={page}>
         <div className={column}>
-          <h2 className={pageTitle}>{t("nav.metrics")}</h2>
+          <h2 className={pageTitle}>{t("metrics.title")}</h2>
           {failed ? (
             <Failed what={t("metrics.failedWhat")} />
           ) : (
@@ -666,7 +666,7 @@ export function MetricsPage() {
             card actually measures. */}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
           <h2 className={h2}>
-            {t("nav.metrics")}
+            {t("metrics.title")}
             <Sep />
             <span className="text-muted">{title}</span>
           </h2>

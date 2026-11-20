@@ -10,7 +10,7 @@ export const de = {
     breadcrumb: "Pfad",
     live: "Live",
     runs: "Runs",
-    metrics: "Review-Metriken",
+    metrics: "Metriken",
     teams: "Teams",
     faq: "FAQ",
     api: "API",
@@ -167,6 +167,7 @@ export const de = {
     count: "Anzahl",
   },
   metrics: {
+    title: "Review-Metriken",
     failedWhat: "die Review-Metriken",
     lastDays_one: "der letzte Tag",
     lastDays_other: "die letzten {{count}} Tage",
