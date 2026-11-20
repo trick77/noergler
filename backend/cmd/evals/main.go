@@ -82,7 +82,10 @@ import (
 // gateway.
 type options struct {
 	promptPath string
-	effort     string
+	// questionsPath is the questions experiment's brief (EVALS.md), ""
+	// for a plain run.
+	questionsPath string
+	effort        string
 	// effortSet is whether -effort was passed at all, so an explicit empty
 	// (the balanced level) is told apart from no flag (the series level).
 	effortSet bool
@@ -141,6 +144,8 @@ func main() {
 	flag.StringVar(&opt.consolidatePath, "consolidate", "internal/evals/briefs/merge.txt", "consolidation brief appended to the review prompt")
 	flag.IntVar(&opt.confirmGroups, "confirm-groups", 3, "groups of three consolidated per case")
 	flag.StringVar(&opt.promptPath, "prompt", "", "review prompt template to score instead of the compiled-in one")
+	flag.StringVar(&opt.questionsPath, "questions", "",
+		"questions experiment: brief appended to the prompt (internal/evals/briefs/questions.txt), questions scored")
 	// Unset is the series level (corpus/series.yaml) on the series model.
 	// Keep a series at the level its earlier runs used: less thinking scores
 	// worse on the same prompt.
@@ -242,6 +247,11 @@ func run(ctx context.Context, opt options) (bool, error) {
 	if opt.samples == 0 {
 		opt.samples = 1
 	}
+	// The questions brief changes the review call; any other mode would
+	// either drop it unseen or carry it into calls it does not measure.
+	if opt.questionsPath != "" && (opt.mix != "" || opt.rescore != "" || opt.confirm != "" || opt.conflicts || opt.compliance) {
+		return false, errors.New("-questions runs with a plain or sampled run only, not -mix, -rescore, -confirm, -conflicts or -compliance")
+	}
 	if opt.conflicts {
 		return runConflicts(ctx, opt)
 	}
@@ -281,6 +291,13 @@ func run(ctx context.Context, opt options) (bool, error) {
 	if cases, err = selectCases(cases, opt.only); err != nil {
 		return false, err
 	}
+	if opt.questionsPath != "" {
+		brief, err := os.ReadFile(opt.questionsPath) //nolint:gosec // G304: an operator-supplied flag in a dev tool
+		if err != nil {
+			return false, fmt.Errorf("read questions brief: %w", err)
+		}
+		cases = evals.WithQuestions(cases, string(brief))
+	}
 	counter, err := tokens.New()
 	if err != nil {
 		return false, fmt.Errorf("tokenizer: %w", err)
@@ -308,6 +325,9 @@ func run(ctx context.Context, opt options) (bool, error) {
 			sampled.Effort = "balanced"
 		}
 		sampled.Report(opt.stdout)
+		if opt.questionsPath != "" {
+			_, _ = fmt.Fprintln(opt.stdout, evals.TallyQuestions(sampled.SampledResults()))
+		}
 		if err := writeJSON(opt, sampled); err != nil {
 			return false, err
 		}
@@ -322,6 +342,9 @@ func run(ctx context.Context, opt options) (bool, error) {
 	score := evals.Run(ctx, client, string(template), cases, counter.Count)
 	score.Route = settings.Route()
 	score.Report(opt.stdout)
+	if opt.questionsPath != "" {
+		_, _ = fmt.Fprintln(opt.stdout, evals.TallyQuestions(score.Results))
+	}
 	if err := writeJSON(opt, score); err != nil {
 		return false, err
 	}

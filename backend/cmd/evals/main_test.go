@@ -447,3 +447,12 @@ func TestRun_HeaderNamesTheLevelSent(t *testing.T) {
 		t.Errorf("stdout does not name the resolved label:\n%s", out)
 	}
 }
+
+// -questions with a mode that would drop or misapply the brief is refused.
+func TestRun_QuestionsOnlyWithAPlainOrSampledRun(t *testing.T) {
+	opt := baseOptions(t, stubClient{})
+	opt.questionsPath, opt.confirm = "../../internal/evals/briefs/questions.txt", "run.json"
+	if _, err := run(context.Background(), opt); err == nil || !strings.Contains(err.Error(), "-questions") {
+		t.Errorf("err = %v, want -questions refused beside -confirm", err)
+	}
+}
