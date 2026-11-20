@@ -405,8 +405,14 @@ export function MetricsPage() {
   // still belongs in the week the window's first days average over.
   const lead = days(data.lead_since, data.since);
   const trended = [...lead, ...window];
-  const ofWindow = (values: number[]) =>
-    trailingMean(values).slice(lead.length);
+  // Today gets no trend point: its few hours replace a whole day at the
+  // week's far end, so the line dropped at the right edge on every load
+  // (user, 2026-11-20). The trend ends on yesterday, the last whole day.
+  const ofWindow = (values: number[]) => {
+    const trend = trailingMean(values).slice(lead.length);
+    if (partial && trend.length > 0) trend[trend.length - 1] = null;
+    return trend;
+  };
   const trendColor = "var(--color-ink)";
   const runTrend: Trend = {
     values: ofWindow(
