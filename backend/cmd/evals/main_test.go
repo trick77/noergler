@@ -95,6 +95,11 @@ func perfectFindings(t *testing.T) (stubClient, int) {
 		if len(c.Files) > 0 {
 			mark = diff.NumberDiff(c.Files[0].Diff)
 		}
+		// Two cases may share a diff and differ in the unchanged caller
+		// alone: that line, as the prompt shows it, tells them apart.
+		if len(c.References) > 0 {
+			mark = c.References[0].Text
+		}
 		for _, e := range c.Expected {
 			seeded++
 			line, text := firstShownLine(t, c, e)

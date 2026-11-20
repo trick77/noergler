@@ -655,3 +655,13 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - The two header counting rules disagree on `\ No newline`: both required,
   never unify.
 - Line splitting differs per call site on purpose (`\n` vs `splitlines()`).
+- Unchanged-caller search (user, 2026-11-20: never a burst of searches from
+  one review): at most one code search per review, on the worker, never
+  retried, never paged; only for a PR into the default branch (the search
+  indexes that branch alone); the PR's own files are left out, old paths
+  of moved files included (the default branch holds their old version);
+  unknown PR files (incremental, whole-PR diff unread) = no search, never
+  the push's files in their place: an earlier push's file would read as
+  unchanged. Code picks the names and the lines,
+  never the model; the lines are evidence, never an anchor. Fault or no
+  search on the instance = no block, the review goes on.

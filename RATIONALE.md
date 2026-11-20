@@ -399,6 +399,14 @@ an incident or an eval run: read the reason before relaxing a rule.
 
 ## Adapters and HTTP
 
+- Unchanged callers by Bitbucket code search, not by fetching the repo:
+  go-git has no partial clone, so a depth-1 fetch pulls the whole working
+  tree (3 MB for noergler itself, hundreds for a monorepo) on the single
+  worker every push; one search is one request. The search reads the
+  default branch only, which is exactly where a file the PR does not change
+  stands as the PR sees it, when the PR goes there. One OR query for all
+  names (the syntax takes 9 expressions, 250 characters), not one per name:
+  the user asked for no burst of searches from one review (2026-11-20).
 - No `Client.Timeout`: Go's spans the body read and cut a 10 MiB diff.
 - No redirects: a 3xx would replay the bearer token at the new host.
 - Status before the cap: otherwise a big error page reports as an oversized

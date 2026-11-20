@@ -62,6 +62,8 @@ type BitbucketClient interface {
 	PostInlineTask(ctx context.Context, project, repo string, prID int, file string, line int, body string) (int, error)
 	ResolveTask(ctx context.Context, project, repo string, prID, commentID int) error
 	DefaultBranch(ctx context.Context, project, repo string) (string, error)
+	// SearchCode is the one code search a review may make (references.go).
+	SearchCode(ctx context.Context, query string, limit int) ([]bitbucket.CodeHit, error)
 }
 
 // JiraClient is the part of the Jira adapter the pipeline uses.

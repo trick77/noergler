@@ -50,6 +50,9 @@ type cumulativeContext struct {
 	// the nested AGENTS.md set follows the whole PR, never one push or the
 	// budgeted copy. nil when the diff could not be read.
 	paths []string
+	// sources are the full diff's old paths (renamed, moved, deleted
+	// files): still on the default branch, still the PR's.
+	sources []string
 }
 
 // fetchCumulativeDiff returns the part of the whole-PR diff worth sending as
@@ -142,7 +145,7 @@ func (r *Reviewer) fetchCumulativeDiff(ctx context.Context, key store.PRKey, prT
 		filtered, len(oversized), oversizedNames(oversized), len(omitted), largestOmitted(omitted)))
 
 	out := cumulativeContext{diff: kept.String(), partial: filtered > 0 || len(oversized) > 0 || len(omitted) > 0,
-		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full), paths: prPaths(full)}
+		added: diff.AddedLines(full), hasScreenshot: diff.HasScreenshot(full), paths: prPaths(full), sources: diff.SourcePaths(full)}
 	a, d, n := diff.Scope(full)
 	out.scope = &store.PRScope{Added: a, Removed: d, Files: n}
 	for _, f := range omitted {

@@ -30,6 +30,30 @@ var diffPathRE = regexp.MustCompile(`(?m)^diff --git (?:a/.+ b/|src://.+ dst://)
 
 var plusPlusPlusRE = regexp.MustCompile(`(?m)^\+\+\+ (?:b/|dst://)(.+)$`)
 
+// sourcePathRE matches a file part's old path: git's rename line or the
+// `---` header in standard a/ or Bitbucket src:// form.
+var sourcePathRE = regexp.MustCompile(`(?m)^(?:rename from |--- (?:a/|src://))(.+)$`)
+
+// SourcePaths are the old paths a diff names that differ from their new
+// one: a renamed or moved file's former path (a deleted file's path is
+// already its ExtractPath). The default branch still holds them, so they
+// are the PR's files too.
+func SourcePaths(d string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range SplitByFile(d) {
+		now := ExtractPath(part)
+		for _, m := range sourcePathRE.FindAllStringSubmatch(part, -1) {
+			p := strings.TrimRight(m[1], "\r")
+			if p != now && p != "/dev/null" && !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
 // hunkHeaderRE matches `@@ -a,b +c,d @@`. It is deliberately not anchored at the
 // end: `@@ -1,2 +1,3 @@ def foo():` parses and the trailing function context is
 // discarded.

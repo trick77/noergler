@@ -159,7 +159,10 @@ type AssembleRequest struct {
 	// NoPRDescription.
 	PRDescription    string
 	CrossFileContext string
-	CumulativePRDiff string
+	// UnchangedReferences is the rendered block of lines from files the PR
+	// does not change that name a symbol it changes; "" for none.
+	UnchangedReferences string
+	CumulativePRDiff    string
 	// CumulativePartial: part of the PR is missing from CumulativePRDiff.
 	CumulativePartial bool
 	// CumulativeOmitted names PR files left out of CumulativePRDiff for
@@ -216,6 +219,11 @@ func AssembleReviewPrompt(req AssembleRequest, count CountFunc) AssembledPrompt 
 	supplementary := RenderSupplementaryContext(req.OtherModifiedPaths, req.DeletedFilePaths, req.RenamedFilePaths)
 	if req.CrossFileContext != "" {
 		supplementary = strings.TrimSpace(supplementary + "\n\n" + req.CrossFileContext)
+	}
+	// After the files, like the cross-file block: it follows the push, so
+	// it sits where the prompt already changes from push to push.
+	if req.UnchangedReferences != "" {
+		supplementary = strings.TrimSpace(supplementary + "\n\n" + req.UnchangedReferences)
 	}
 	if supplementary != "" {
 		files = files + "\n\n" + supplementary
