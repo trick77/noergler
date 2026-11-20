@@ -15,7 +15,7 @@ export const en = {
     breadcrumb: "Breadcrumb",
     live: "Live",
     runs: "Runs",
-    metrics: "Review metrics",
+    metrics: "Metrics",
     teams: "Teams",
     faq: "FAQ",
     api: "API",
@@ -178,6 +178,7 @@ export const en = {
     count: "Count",
   },
   metrics: {
+    title: "Review metrics",
     failedWhat: "review metrics",
     lastDays_one: "the last day",
     lastDays_other: "the last {{count}} days",
