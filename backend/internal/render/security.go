@@ -2,6 +2,7 @@ package render
 
 import (
 	"regexp"
+	"slices"
 
 	"github.com/trick77/noergler/internal/inference"
 )
@@ -41,10 +42,11 @@ func IsSecurityFinding(comment string) bool {
 }
 
 // isSecurity counts a finding as security-relevant by the category the
-// review gave it; a finding without one (a row from before the field, a
-// model that named none) falls back to the comment's keywords.
+// review gave it; a finding without a known one (a row from before the
+// field, a model that named none, a stored value a later enum dropped)
+// falls back to the comment's keywords.
 func isSecurity(f inference.ReviewFinding) bool {
-	if f.Category != nil {
+	if f.Category != nil && slices.Contains(inference.Categories, *f.Category) {
 		return inference.IsSecurityCategory(*f.Category)
 	}
 	return IsSecurityFinding(f.Comment)

@@ -107,6 +107,8 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 29 | 0 | as run2 | **run3.** Exit 1, complete. The miss is `visual-hidden-submit`'s code bug, its screenshot line seen (the known flaky case). Nothing extra, controls clean. $0.056, 39 calls. |
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 30 | 1 | `prompts/review.txt` @ 26f8046 + cumulative PR diff numbered per file, empty `strengths` "shows nothing" (#489 alone) | **run4.** Exit 0, complete, no redraw. Incremental cases: F101 claimed and kept, no false fix, no repeat. The Extra is `wrong-error-wrapped` reported as two findings (lines 20 and 23), one defect. Controls clean. $0.068, 39 calls. |
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 28 | 0 | as run4 | **run5.** Exit 1, complete, no redraw. Both misses have no finding at all, on cases the change does not touch (no cumulative diff): `blocking-float-money` (missed in rev15 run1 too) and `blocking-pii-log` (rev14 run16). Incremental cases clean again. Controls clean. $0.051, 39 calls. |
+| 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 30 | 0 | `prompts/review.txt` @ 26f8046 + `category`: security is a secret leaked at runtime, secret one committed in the diff (#488 alone) | **run6.** Exit 0, complete, no redraw. Every seeded bug caught, nothing extra, controls clean. $0.045, 39 calls. |
+| 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 30 | 1 | as run6 | **run7, confirms run6.** Exit 0, complete. The Extra is a second real finding on `blocking-tenant-check`: store errors reported as 404, beside the B2 task. Controls clean. $0.059, 39 calls. |
 
 ## What the columns mean
 

@@ -21,9 +21,16 @@ func TestIsSecurityPrefersTheCategory(t *testing.T) {
 		{inference.ReviewFinding{Comment: "sql injection in the log line", Category: cat(inference.CategoryBug)}, false},
 		{inference.ReviewFinding{Comment: "sql injection"}, true},
 		{inference.ReviewFinding{Comment: "off by one"}, false},
+		// A stored value the enum no longer knows is no category.
+		{inference.ReviewFinding{Comment: "sql injection", Category: cat("credential")}, true},
+		{inference.ReviewFinding{Comment: "off by one", Category: cat("credential")}, false},
 	} {
+		category := "<nil>"
+		if tc.f.Category != nil {
+			category = *tc.f.Category
+		}
 		if got := isSecurity(tc.f); got != tc.want {
-			t.Errorf("isSecurity(%q, %v) = %v, want %v", tc.f.Comment, tc.f.Category, got, tc.want)
+			t.Errorf("isSecurity(%q, %q) = %v, want %v", tc.f.Comment, category, got, tc.want)
 		}
 	}
 }
