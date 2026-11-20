@@ -1208,8 +1208,8 @@ describe("MetricsPage", () => {
     });
     render(<MetricsPage />);
 
-    // Sep 3: (14 + 7) / 7 reviewed runs, ($0.35 + $0.35) / 7 spend,
-    // (4,900 + 2,100) / 7 LOC.
+    // Sep 2, the last whole day: (14 + 7) / 7 reviewed runs,
+    // ($0.35 + $0.35) / 7 spend, (4,900 + 2,100) / 7 LOC.
     const runs = await screen.findByLabelText(/Runs per day/);
     expect(within(runs as HTMLElement).getByText("3")).toBeDefined();
     const cost = screen.getByLabelText(/Cost per day/);
@@ -1240,10 +1240,36 @@ describe("MetricsPage", () => {
     render(<MetricsPage />);
 
     const runs = await screen.findByLabelText(/Runs per day/);
-    // (700 + 7) / 7 = 101 on Sep 3, over bars of 7: the top tick is 150,
+    // (700 + 7) / 7 = 101 on Sep 2, over bars of 7: the top tick is 150,
     // not the 10 the bars alone would give.
     expect(within(runs as HTMLElement).getByText("101")).toBeDefined();
     expect(within(runs as HTMLElement).getByText("150")).toBeDefined();
+  });
+
+  // Today is still filling: its few hours would replace a whole day at the
+  // week's far end and pull the line down at the right edge. The trend ends
+  // on yesterday, whatever today holds.
+  it("ends the trend on the last whole day", async () => {
+    serve({
+      metrics: {
+        ...metrics,
+        since: "2026-09-01T00:00:00Z",
+        until: "2026-09-04T00:00:00Z",
+        lead_since: "2026-08-26T00:00:00Z",
+        window: "rolling",
+        daily_attempts: [
+          { day: "2026-08-30", outcome: "ok", count: 14 },
+          { day: "2026-09-02", outcome: "ok", count: 7 },
+          { day: "2026-09-03", outcome: "ok", count: 70 },
+        ],
+      },
+    });
+    render(<MetricsPage />);
+
+    const runs = await screen.findByLabelText(/Runs per day/);
+    // Sep 2: (14 + 7) / 7 = 3. Today counted would print (14 + 7 + 70) / 7 = 13.
+    expect(within(runs as HTMLElement).getByText("3")).toBeDefined();
+    expect(within(runs as HTMLElement).queryByText("13")).toBeNull();
   });
 
   it("switches the window to 90 days and back", async () => {
