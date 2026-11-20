@@ -1,0 +1,59 @@
+{
+ "Results": [
+  {
+   "Case": "clean-unchanged-caller",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "unchanged-caller-units",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/session/store.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "`Touch` now treats its TTL as milliseconds and passes it to `PExpire`, but the only visible caller still passes seconds: `internal/session/manager.go:58` calls `m.store.Touch(ctx, id, int64(m.idle.Seconds()))`. On a realistic idle TTL of 30s the store now sets a 30ms expiry, so every touched session drops out of Redis almost immediately and lookups miss right after refresh. Either the caller must switch to `Milliseconds()` or the store must keep interpreting seconds.",
+     "Confidence": 90,
+     "Headline": "Touch switched to milliseconds while caller still passes seconds",
+     "Suggestion": null,
+     "Evidence": [
+      "func (s *Store) Touch(ctx context.Context, id string, ttlMillis int64) error {",
+      "\tif _, err := s.redis.PExpire(ctx, \"session:\"+id, ttlMillis); err != nil {",
+      "if err := m.store.Touch(ctx, id, int64(m.idle.Seconds())); err != nil {"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-passes-seconds",
+      "file": "internal/session/store.go",
+      "lines": [
+       19,
+       25
+      ],
+      "keywords": [
+       "second",
+       "caller",
+       "unit"
+      ],
+      "why": "The unchanged caller still passes seconds to a parameter that now means milliseconds: sessions expire 1000 times too early."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 1,
+ "Caught": 1,
+ "Extra": 0,
+ "Route": "vendor"
+}

@@ -145,6 +145,9 @@ type CorpusFile struct {
 	// Repeats are earlier findings the push must not raise again, each as
 	// a window and keywords on the push's version of the file.
 	Repeats []Expected `json:"repeats"`
+	// References are lines of files the PR does not change, as the code
+	// search would return them: rendered and indexed as production does.
+	References []diff.UnchangedRef `json:"references"`
 }
 
 // corpusIncremental is what production adds to the prompt on a push after
@@ -198,6 +201,8 @@ type Case struct {
 	PreviousOverview string
 	ExpectedFixed    []ExpectedFixed
 	Repeats          []Expected
+	// References are the unchanged files' lines the search would find.
+	References []diff.UnchangedRef
 }
 
 // asPosted is one earlier finding as production shows it (review.asPosted):
@@ -262,7 +267,7 @@ func loadCorpusCase(name string, raw []byte) (Case, error) {
 		return Case{}, fmt.Errorf("name %q, want %q (the file's)", cf.Name, want)
 	}
 	c := Case{Name: cf.Name, Description: cf.Description, Expected: cf.Expected, ExpectedVisual: cf.ExpectedVisual,
-		AgentsMD: cf.AgentsMD, ExpectedFixed: cf.ExpectedFixed, Repeats: cf.Repeats}
+		AgentsMD: cf.AgentsMD, ExpectedFixed: cf.ExpectedFixed, Repeats: cf.Repeats, References: cf.References}
 	if inc := cf.Incremental; inc != nil {
 		c.Incremental, c.CumulativeDiff, c.PreviousOverview = true, inc.CumulativeDiff, inc.PreviousOverview
 		for _, p := range inc.PreviousFindings {
@@ -464,9 +469,11 @@ func assemble(template string, c Case, count inference.CountFunc) inference.Asse
 		RepoInstructions: c.AgentsMD,
 		BlockingRules:    c.BlockingRules,
 		CumulativePRDiff: c.CumulativeDiff,
-		Incremental:      c.Incremental,
-		PreviouslyPosted: c.PreviouslyPosted,
-		PreviousOverview: c.PreviousOverview,
+		// The same renderer as the review's search step.
+		UnchangedReferences: diff.RenderUnchangedReferences(c.References),
+		Incremental:         c.Incremental,
+		PreviouslyPosted:    c.PreviouslyPosted,
+		PreviousOverview:    c.PreviousOverview,
 		// The scoring matches English corpus keywords.
 		Language: lang.EN,
 	}, count)
@@ -490,6 +497,7 @@ func reviewCase(ctx context.Context, client Reviewer, c Case, assembled inferenc
 	// cumulative diff is quotable too.
 	idx := diff.BuildAnchorIndex(c.Files)
 	idx.AddContextDiff(c.CumulativeDiff)
+	idx.AddContextLines(diff.ReferenceLines(c.References))
 	v := inference.ValidateFindings(out.Review.Findings, idx)
 	res.Findings, res.Dropped, res.Moved = v.Kept, v.Dropped, v.Reanchored
 	// A full case is one diff: its own added lines are the PR's. An

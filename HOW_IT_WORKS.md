@@ -233,6 +233,33 @@ as a short relationship section, capped at 30 lines. A reference that occurs on
 a diff line is labelled as such, so the model can tell a call site it can see
 from one it cannot.
 
+**Callers in unchanged files.** A changed signature breaks callers the PR
+does not touch, which the review otherwise never sees. One Bitbucket code
+search per review looks for the names the diff's lines define (functions,
+methods, classes), read off the diff as fetched, before compression drops
+deleted files and removal-only hunks. Only names whose callers can break:
+a definition the diff removes and adds (changed signature) first, then one
+it only removes (renamed or deleted: the old name is what callers still
+use). A name the diff only adds is never searched: the default branch has
+no caller of it, only other symbols of the same name. At least 4
+characters, not a name every type defines (`String`, `main`, `toString`,
+`__init__`, ...), at most 6 names, one query of the form
+`(A OR B) project:KEY repo:slug`. Code keeps the returned lines that name
+one as a whole word, case as written, in a code file the PR does not change
+(new and old paths of a moved file both count as the PR's; docs and config
+never), never a comment line, never one over 200 characters (left out, not
+cut), production callers before tests, at most 5 a name and 20 in all, and
+sends them as "References in unchanged files" after the cross-file section.
+The block's tokens come off the input budget before the PR is sized. An
+incremental review whose whole-PR diff could not be read does not know the
+PR's files and searches nothing. They are evidence, never an anchor: a
+finding still needs a line of the PR's own diff. The search reads the
+repository's default branch only (files under 512 KiB), so it runs only for
+a PR into the default branch (the cached default-branch lookup the SNAPSHOT
+task uses); otherwise, without a name, on a failed search or on an instance
+that does not run search, there is no block and the review goes on. One log
+line says which.
+
 ## 8. Large PR compression
 
 When the files plus room to expand them do not fit the budget, the PR is

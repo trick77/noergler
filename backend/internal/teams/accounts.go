@@ -254,6 +254,9 @@ func (b *botSwitch) ResolveTask(ctx context.Context, project, repo string, prID,
 func (b *botSwitch) DefaultBranch(ctx context.Context, project, repo string) (string, error) {
 	return b.c().DefaultBranch(ctx, project, repo)
 }
+func (b *botSwitch) SearchCode(ctx context.Context, query string, limit int) ([]bitbucket.CodeHit, error) {
+	return b.c().SearchCode(ctx, query, limit)
+}
 func (b *botSwitch) MergeStatus(ctx context.Context, project, repo string, prID int) (bitbucket.MergeStatus, error) {
 	return b.c().MergeStatus(ctx, project, repo, prID)
 }

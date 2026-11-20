@@ -1,0 +1,36 @@
+{
+  "name": "unchanged-caller-units",
+  "description": "store.go changes Touch's ttl from seconds to milliseconds (Expire becomes PExpire). The PR does not touch the caller: the code search finds manager.go passing int64(m.idle.Seconds()), so every session now lives a thousandth of its idle time. The bug is only visible through the reference block, and must be anchored on store.go's diff with the caller line as evidence.",
+  "files": [
+    {
+      "path": "internal/session/store.go",
+      "diff": "@@ -16,12 +16,12 @@ type Store struct {\n \tredis Redis\n }\n \n-// Touch extends a session's life by ttlSeconds seconds.\n-func (s *Store) Touch(ctx context.Context, id string, ttlSeconds int64) error {\n-\tif ttlSeconds <= 0 {\n+// Touch extends a session's life by ttlMillis milliseconds.\n+func (s *Store) Touch(ctx context.Context, id string, ttlMillis int64) error {\n+\tif ttlMillis <= 0 {\n \t\treturn fmt.Errorf(\"session: touch %s: non-positive ttl\", id)\n \t}\n-\tif _, err := s.redis.Expire(ctx, \"session:\"+id, ttlSeconds); err != nil {\n+\tif _, err := s.redis.PExpire(ctx, \"session:\"+id, ttlMillis); err != nil {\n \t\treturn fmt.Errorf(\"session: touch %s: %w\", id, err)\n \t}\n \treturn nil",
+      "content": "package session\n\nimport (\n\t\"context\"\n\t\"fmt\"\n)\n\n// Redis is the subset of the Redis client the store uses.\ntype Redis interface {\n\tExpire(ctx context.Context, key string, ttlSeconds int64) (bool, error)\n\tPExpire(ctx context.Context, key string, ttlMillis int64) (bool, error)\n}\n\n// Store keeps sessions in Redis.\ntype Store struct {\n\tredis Redis\n}\n\n// Touch extends a session's life by ttlMillis milliseconds.\nfunc (s *Store) Touch(ctx context.Context, id string, ttlMillis int64) error {\n\tif ttlMillis <= 0 {\n\t\treturn fmt.Errorf(\"session: touch %s: non-positive ttl\", id)\n\t}\n\tif _, err := s.redis.PExpire(ctx, \"session:\"+id, ttlMillis); err != nil {\n\t\treturn fmt.Errorf(\"session: touch %s: %w\", id, err)\n\t}\n\treturn nil\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "references": [
+    {
+      "symbol": "Touch",
+      "file": "internal/session/manager.go",
+      "line": 58,
+      "text": "if err := m.store.Touch(ctx, id, int64(m.idle.Seconds())); err != nil {"
+    }
+  ],
+  "expected": [
+    {
+      "id": "caller-passes-seconds",
+      "file": "internal/session/store.go",
+      "lines": [
+        19,
+        25
+      ],
+      "keywords": [
+        "second",
+        "caller",
+        "unit"
+      ],
+      "why": "The unchanged caller still passes seconds to a parameter that now means milliseconds: sessions expire 1000 times too early."
+    }
+  ]
+}

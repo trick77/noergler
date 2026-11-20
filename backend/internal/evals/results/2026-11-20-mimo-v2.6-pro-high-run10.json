@@ -1,0 +1,59 @@
+{
+ "Results": [
+  {
+   "Case": "clean-unchanged-caller",
+   "Outcome": "ok",
+   "Findings": null,
+   "Matches": [],
+   "Extra": 0
+  },
+  {
+   "Case": "unchanged-caller-units",
+   "Outcome": "ok",
+   "Findings": [
+    {
+     "File": "internal/session/store.go",
+     "Line": 20,
+     "Severity": "issue",
+     "Comment": "`Touch` now interprets its TTL argument as milliseconds and passes it straight to `PExpire`, but the only caller in the codebase, `internal/session/manager.go:58`, passes `int64(m.idle.Seconds())` — a value in seconds. With a 30-minute idle timeout that call sends 1800, which `PExpire` reads as 1800 ms, so every touched session is given a 1.8-second TTL instead of 30 minutes and is dropped almost immediately. The unit change to the parameter contract needs to be applied at this call site (or the caller converted to milliseconds) before this lands.",
+     "Confidence": 95,
+     "Headline": "Touch now takes milliseconds but its caller passes seconds",
+     "Suggestion": null,
+     "Evidence": [
+      "func (s *Store) Touch(ctx context.Context, id string, ttlMillis int64) error {",
+      "\tif _, err := s.redis.PExpire(ctx, \"session:\"+id, ttlMillis); err != nil {",
+      "if err := m.store.Touch(ctx, id, int64(m.idle.Seconds())); err != nil {"
+     ],
+     "BlockingRule": null,
+     "Category": "bug"
+    }
+   ],
+   "Matches": [
+    {
+     "Expected": {
+      "id": "caller-passes-seconds",
+      "file": "internal/session/store.go",
+      "lines": [
+       19,
+       25
+      ],
+      "keywords": [
+       "second",
+       "caller",
+       "unit"
+      ],
+      "why": "The unchanged caller still passes seconds to a parameter that now means milliseconds: sessions expire 1000 times too early."
+     },
+     "Found": true,
+     "Finding": 0,
+     "Why": ""
+    }
+   ],
+   "Extra": 0
+  }
+ ],
+ "Seeded": 1,
+ "Caught": 1,
+ "Extra": 0,
+ "Route": "vendor"
+}

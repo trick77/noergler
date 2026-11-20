@@ -109,6 +109,11 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 28 | 0 | as run4 | **run5.** Exit 1, complete, no redraw. Both misses have no finding at all, on cases the change does not touch (no cumulative diff): `blocking-float-money` (missed in rev15 run1 too) and `blocking-pii-log` (rev14 run16). Incremental cases clean again. Controls clean. $0.051, 39 calls. |
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 30 | 0 | `prompts/review.txt` @ 26f8046 + `category`: security is a secret leaked at runtime, secret one committed in the diff (#488 alone) | **run6.** Exit 0, complete, no redraw. Every seeded bug caught, nothing extra, controls clean. $0.045, 39 calls. |
 | 2026-11-20 | mimo-v2.6-pro | high | 38 rev15 | 30 | 30 | 1 | as run6 | **run7, confirms run6.** Exit 0, complete. The Extra is a second real finding on `blocking-tenant-check`: store errors reported as 404, beside the B2 task. Controls clean. $0.059, 39 calls. |
+| 2026-11-20 | mimo-v2.6-pro | high | 40 rev16 | 31 | 31 | 0 | `prompts/review.txt` @ 1c40568 + "References in unchanged files" block | **run8: unchanged-caller references, new baseline.** Exit 0, complete. `unchanged-caller-units` caught from the reference block, its control clean. $0.051, 41 calls. |
+| 2026-11-20 | mimo-v2.6-pro | high | 40 rev16 | 31 | 30 | 0 | as run8 | **run9.** Exit 1, complete. The miss is `visual-hidden-submit`'s code bug (the known flaky case); `unchanged-caller-units` caught, control clean. |
+| 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run10, the two reference cases only: not a row of the series.** Caught, control clean. |
+| 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run11, the same.** Caught, control clean. |
+| 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run12, the same.** Caught 5 of 5 over run8 to run12, the control clean 5 of 5. |
 
 ## What the columns mean
 
@@ -168,9 +173,15 @@ several reviews. Those live in `sampled/` and are never rows here.
   only: the diff carries none. The window covers `batches()`, and the
   keywords are prose naming the chunk, no code literal (a quoted line would
   score whatever it said); every rev15 finding committed with this revision
-  scores the same under them. Sampled runs score findings only. Bump the number when a
+  scores the same under them. `rev16` adds `unchanged-caller-units` and its
+  control `clean-unchanged-caller` (a case may carry `references`: lines of
+  files the PR does not change, as the code search returns them, rendered
+  and indexed as production does), taking it to 40 with 31 seeded. The
+  seeded bug is visible only through that block: a caller still passing
+  seconds after the PR moved the unit to milliseconds. Sampled runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`,
-  `expected_fixed`, `repeats`, and anything in the `incremental` block.
+  `expected_fixed`, `repeats`, `references`, and anything in the
+  `incremental` block.
   Prose does not move a score, so an edit to `description` or `why` is not a
   new revision, and rev4 covers such an edit made after run5.
 - **Seeded / Caught**: bugs the corpus planted, and how many the review

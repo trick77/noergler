@@ -185,6 +185,22 @@ func (idx AnchorIndex) AddContextDiff(d string) {
 	idx[contextKey] = fa
 }
 
+// AddContextLines indexes lines the prompt showed as context only, as they
+// stand (the unchanged files' references): quotable as evidence, never an
+// anchor, like AddContextDiff's.
+func (idx AnchorIndex) AddContextLines(lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	fa := idx[contextKey]
+	for _, line := range lines {
+		fa.Content = append(fa.Content, HashLine(line))
+	}
+	slices.Sort(fa.Content)
+	fa.Content = slices.Compact(fa.Content)
+	idx[contextKey] = fa
+}
+
 // HashLine is the hash a shown line and a quoted evidence line are compared
 // by. Whitespace runs collapse to one space and the ends are trimmed, so a
 // quote that re-indents or re-spaces the code still matches it. strings.Fields

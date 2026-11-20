@@ -105,8 +105,12 @@ type fakeBitbucket struct {
 	defaultBranch      string
 	defaultBranchErr   error
 	DefaultBranchCalls int
-	FileDiffs          int
-	openTasksErr       error
+	// searchHits answers SearchCode; Searches records each query.
+	searchHits   []bitbucket.CodeHit
+	searchErr    error
+	Searches     []string
+	FileDiffs    int
+	openTasksErr error
 }
 
 // FetchPRFileDiff answers the file's part of prDiff, the one diff the fake
@@ -199,6 +203,13 @@ func (f *fakeBitbucket) DefaultBranch(_ context.Context, _, _ string) (string, e
 		return "refs/heads/master", nil
 	}
 	return f.defaultBranch, nil
+}
+
+func (f *fakeBitbucket) SearchCode(_ context.Context, query string, _ int) ([]bitbucket.CodeHit, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Searches = append(f.Searches, query)
+	return f.searchHits, f.searchErr
 }
 
 func newFakeBitbucket() *fakeBitbucket {

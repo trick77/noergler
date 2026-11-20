@@ -272,9 +272,32 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 			prTag, r.cfg.AgentsMDMaxTokens, strings.Join(nestedDropped, ", ")))
 	}
 
+	// 13c. Callers in files the PR does not change: one search, at most.
+	// Before the budget, which the block's tokens come off. Names from the
+	// whole diff as fetched: compression drops deleted files and
+	// removal-only hunks, the names whose callers break first. The PR's own
+	// files, new and old paths: on an incremental review only the full
+	// cumulative diff names them all; without it there is no search, since
+	// an earlier push's file would read as unchanged.
+	var prFiles []string
+	prFilesKnown := true
+	switch {
+	case incrementalFrom == "":
+		prFiles = append(prPaths(rawDiff), diff.SourcePaths(rawDiff)...)
+	case cumulativePR.paths != nil:
+		prFiles = append(append([]string{}, cumulativePR.paths...), cumulativePR.sources...)
+	default:
+		prFilesKnown = false
+	}
+	unchangedRefs := r.unchangedReferences(ctx, pr, key, prTag, diffParts(rawDiff), prFiles, prFilesKnown)
+	unchangedBlock := diff.RenderUnchangedReferences(unchangedRefs)
+
 	// 14. Small PRs get context expansion; large ones are compressed first.
 	var otherModified, deletedPaths, renamedPaths []string
 	budget := r.llm.InputTokenBudget()
+	if unchangedBlock != "" {
+		budget = max(0, budget-r.tokens.Count(unchangedBlock))
+	}
 	if diff.IsSmall(files, budget, r.template, r.tokens.Count, inference.FormatFileEntry, contextExpansionRatio) {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: small PR (%d files) - expanding context (before=%d, after=%d, dynamic=%v)",
 			prTag, len(files), r.cfg.DiffExtraLinesBefore, r.cfg.DiffExtraLinesAfter, r.cfg.DiffAllowDynamicContext))
@@ -370,6 +393,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		TicketComplianceCheck: r.cfg.TicketComplianceCheck,
 		PRDescription:         prDescription,
 		CrossFileContext:      crossFile,
+		UnchangedReferences:   unchangedBlock,
 		CumulativePRDiff:      cumulativePR.diff,
 		CumulativePartial:     cumulativePR.partial,
 		CumulativeOmitted:     cumulativePR.omitted,
@@ -432,6 +456,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// the only place an earlier push's change is shown.
 	anchors := diff.BuildAnchorIndex(files)
 	anchors.AddContextDiff(cumulativePR.diff)
+	// The unchanged files' lines are quotable too, never anchors.
+	anchors.AddContextLines(diff.ReferenceLines(unchangedRefs))
 	var prAdded map[string]map[uint64]bool
 	var history diff.AnchorIndex
 	preUnknown := false
