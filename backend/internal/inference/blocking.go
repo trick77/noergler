@@ -85,19 +85,28 @@ func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over []string)
 // ExtractBlockingRulesFrom is ExtractBlockingRules over several files in
 // the order given (the root first, then the nested ones in path order):
 // one numbering, one MaxBlockingRules cap shared by all, so the root's
-// rules come first. A text repeats only within one directory: the same
-// rule in two sibling modules is two rules, each covering its own. A
-// nested repeat of a root rule takes no slot: the root's covers every file.
+// rules come first. A text repeats only where no file above already marks
+// it: the same rule in two sibling modules is two rules, each covering its
+// own, but a repeat of the root's or of a parent directory's takes no
+// slot, since that rule covers the files already. Sources in path order
+// put a parent before its children.
 func ExtractBlockingRulesFrom(sources []RuleSource) (rules []BlockingRule, over []string) {
-	seen := map[string]bool{}
+	dirs := map[string][]string{} // text -> the directories marking it
+	covered := func(text, dir string) bool {
+		for _, d := range dirs[text] {
+			if strings.HasPrefix(dir, d) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, s := range sources {
 		for _, t := range markedTexts(s.Text) {
 			text := capRunes(NormalizeRule(t), maxBlockingRuleRunes)
-			key := s.Dir + "\x00" + text
-			if text == "" || seen[key] || seen["\x00"+text] {
+			if text == "" || covered(text, s.Dir) {
 				continue
 			}
-			seen[key] = true
+			dirs[text] = append(dirs[text], s.Dir)
 			if len(rules) == MaxBlockingRules {
 				over = append(over, text)
 				continue

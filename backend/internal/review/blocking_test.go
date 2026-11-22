@@ -490,6 +490,22 @@ func TestNestedBlockingRuleCoversItsDirectory(t *testing.T) {
 	}
 }
 
+// The check of a task's rule reads quietly: "loaded" stays the prompt's
+// line, once per run, however many tasks are checked.
+func TestNestedRuleCheckLogsQuietly(t *testing.T) {
+	h := nestedBlockingHarness(t)
+	earlierTask(h, "Money is integer cents.")
+	h.st.existing[0].FilePath = "services/pay/a.go"
+	var logs bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&logs, nil))
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if n := strings.Count(logs.String(), "loaded services/pay/AGENTS.md"); n != 1 {
+		t.Errorf("loaded logged %d times, want 1:\n%s", n, logs.String())
+	}
+}
+
 // A task on a nested rule: removed from that AGENTS.md it is resolved;
 // kept, or not proven gone (lookup cut short, file not looked up this
 // run), it stays.
@@ -525,6 +541,10 @@ func TestTaskOfANestedRule(t *testing.T) {
 	}
 	for name, tweak := range map[string]func(*harness){
 		"kept": func(*harness) {},
+		// An old row kept the model's b/ prefix: the file it means is read.
+		"kept, an old row's side prefix": func(h *harness) {
+			h.st.existing[0].FilePath = "b/services/pay/a.go"
+		},
 		"kept by a file not in this run's diff": func(h *harness) {
 			h.st.existing[0].FilePath = "services/billing/b.go"
 			h.bb.files["src1:services/billing/AGENTS.md"] = "- [blocking] Money is integer cents.\n"

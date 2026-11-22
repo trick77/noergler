@@ -180,12 +180,19 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 
 // stillMarked reports whether an AGENTS.md below the root that covers file
 // marks text at commit. why is non-empty when that is not known for sure:
-// then the task stays, whatever marked says.
+// then the task stays, whatever marked says. Rows written before paths were
+// resolved keep the model's a/ or b/ prefix (inference.ShownPath), and a
+// real top-level a/ or b/ directory keeps it too: both readings are
+// probed, the rule kept if either marks it.
 func (r *Reviewer) stillMarked(ctx context.Context, key store.PRKey, prTag, commit, file, text string) (marked bool, why string) {
 	if commit == "" {
 		return false, "no PR head to read its AGENTS.md files at"
 	}
-	nested, left, incomplete := r.fetchNestedAgentsMD(ctx, key.Project, key.Repo, commit, prTag, []string{file})
+	files := []string{file}
+	if s := inference.StripSidePrefix(file); s != file {
+		files = append(files, s)
+	}
+	nested, left, incomplete := r.lookupNested(ctx, key.Project, key.Repo, commit, prTag, files, true)
 	switch {
 	case ctx.Err() != nil:
 		return false, "run cancelled"
@@ -245,7 +252,14 @@ func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string, ne
 	}
 	rules, over := inference.ExtractBlockingRulesFrom(sources)
 	if len(rules) > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s) in AGENTS.md", prTag, len(rules)))
+		root := 0
+		for _, rule := range rules {
+			if rule.Dir == "" {
+				root++
+			}
+		}
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s): %d in the root AGENTS.md, %d in nested ones",
+			prTag, len(rules), root, len(rules)-root))
 	}
 	for _, rule := range rules {
 		if rule.Dir != "" {
