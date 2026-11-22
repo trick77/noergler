@@ -287,7 +287,11 @@ an incident or an eval run: read the reason before relaxing a rule.
   (user), which settles the finding: the team said it no longer blocks.
   Rules from the target branch (code review): read from the PR's head, a
   PR could delete the marker it violates and unblock itself; a rule a PR
-  adds blocks from its merge on. One more GET per review. A reworded rule
+  adds blocks from its merge on. One more GET per review. Nested files'
+  rules (user, 2026-11-22) are read at the PR head instead, from the files
+  the prompt already loaded: a module team's rule blocks without a second
+  lookup at the target; that a PR can drop its own nested rule was judged
+  not worth one ("das ist jetzt wirklich nicht wichtig"). A reworded rule
   is a removed one (text is the key), so its row holds back no new task:
   else the violation under the new wording would be a held-back repeat.
 - Merge conflict author only: the push lands on the author's branch.

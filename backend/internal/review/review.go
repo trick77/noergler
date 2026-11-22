@@ -358,12 +358,15 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// claimed fixed), dedupe still holds its repeat back, and the summary's
 	// list and verdict leave it out.
 	existing, _ = r.closeThreads(ctx, key, prTag, existing, maxThreadChecks, false)
-	// The target branch's rules, never the PR's own: the branch a rule
-	// gates must not lift it. A rule it no longer marks blocks nothing: its
-	// open tasks go.
+	// The root's rules from the target branch, never the PR's own: the
+	// branch a rule gates must not lift it. A rule no longer marked blocks
+	// nothing: its open tasks go.
 	rulesMD, rulesKnown := r.targetAgentsMD(ctx, project, repo, pr.ToRef.Branch())
-	blockingRules, markedRules := r.blockingRules(ctx, prTag, rulesMD)
-	existing = r.retireRemovedRules(ctx, key, prTag, existing, markedRules, rulesKnown)
+	// The nested files' rules join them, from the PR head (blockingRules):
+	// every file found, one left out of the prompt over the token limit too,
+	// since its rules still hold.
+	blockingRules, markedRules := r.blockingRules(ctx, prTag, rulesMD, nested)
+	existing = r.retireRemovedRules(ctx, key, prTag, sourceCommit, existing, markedRules, rulesKnown)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.

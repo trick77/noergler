@@ -259,8 +259,8 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Nested AGENTS.md: picked from the whole PR's paths, never one push's
   (`{repo_instructions}` sits at the top: a set that followed the push
   would break the prefix cache), path order only; never a gate (the root
-  decides skips, user 2026-11-22: "auf keinen fall optional"), never a
-  blocking rule. Every ancestor of a changed file at any depth, the whole
+  decides skips, user 2026-11-22: "auf keinen fall optional"); its
+  `[blocking]` rules block (see Blocking rules). Every ancestor of a changed file at any depth, the whole
   chain applies (user, 2026-11-22: a depth cap missed module files below
   `src/`, nearest-only dropped shared parent rules). Probes capped by count
   (each a Bitbucket call on the worker), shallow first so a cut drops deep
@@ -274,10 +274,14 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   short (cap, failed read) is one footer line, never paths: most probed
   dirs hold no file, a path list named ones that do not exist.
 - Blocking rules (user, 2026-11-15): code decides which rules block
-  (`[blocking]` line prefix in the TARGET branch's AGENTS.md, never the
-  PR's: the gated branch must not lift its gate; `ExtractBlockingRules`,
-  wrapped lines joined, fences skipped, at most 10, ids `B<n>` per
-  review), the model only names the rule a finding violates
+  (`[blocking]` line prefix in the TARGET branch's root AGENTS.md, never
+  the PR's: the gated branch must not lift its gate; plus the nested ones
+  at the PR head, user 2026-11-22, a PR dropping its own nested rule is
+  accepted. A nested rule covers its dir and below only, checked by code;
+  out of scope = `downgraded_unknown_rule`, no outcome of its own.
+  `ExtractBlockingRulesFrom`: root first, wrapped lines joined, fences
+  skipped, at most 10 shared, ids `B<n>` per review), the model only names
+  the rule a finding violates
   (`blocking_rule`). `CheckBlocking` is blunt: id known, `issue`,
   confidence >= 90; else a plain comment, never a drop. At most 3 tasks a
   review; cap and switches apply before the sort, then a task sorts first
@@ -294,7 +298,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   unseen). A rule gone from the
   target's AGENTS.md (reworded counts; past the cap of 10 does not)
   resolves its open tasks, only when that file was read for sure (a fetch
-  fault is not "no rules"); such a row (`rule_removed`) holds back no new
+  fault is not "no rules") and no AGENTS.md above the task's file at the PR
+  head marks it, each read for sure (the row keeps the text, not the file
+  it came from; a sibling's same text does not cover it; error, over 32
+  KiB or cut = kept). Probed per task file, memoized, any file of the PR or
+  not; such a row (`rule_removed`) holds back no new
   task, judged after the cap and switches. Disputes change nothing.
   Same switches as the SNAPSHOT task, off = no task call, the finding
   posts as a comment. `{blocking_rules}` sits right after

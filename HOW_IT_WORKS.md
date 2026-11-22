@@ -108,8 +108,10 @@ no path list, most candidates hold no file); the run page shows the same,
 with tokens. The size warning counts the root and the nested files
 together and names the largest; the tip is about the root file alone.
 Every file cut or not read is logged. `[blocking]` lines in a
-nested file block nothing (logged): blocking rules are the target branch's
-root file only. The Q&A reads the same for the PR's paths, a finding reply
+nested file block too, read at the PR head (the root's from the target
+branch), for files in or below its directory only: the prompt names the
+directory, and a claim on another file stays a plain comment. Root rules
+come first; the cap of 10 is shared. The Q&A reads the same for the PR's paths, a finding reply
 for the finding's file; a dispute bullet is checked against the root alone.
 
 **SNAPSHOT task.** A PR into the repo's default branch (Bitbucket's
@@ -317,12 +319,13 @@ Findings already posted by earlier runs are filtered out by reading the
 **database**, not by fetching and parsing Bitbucket comments. What is left is
 sorted by severity and capped at `REVIEW_MAX_COMMENTS`.
 
-**Blocking rules.** A line of the target branch's AGENTS.md (never the
-PR's own, so a PR cannot drop the rule it breaks) that starts with
+**Blocking rules.** A line of the target branch's root AGENTS.md (never the
+PR's own, so a PR cannot drop the rule it breaks), or of a nested one at
+the PR head (covering its directory only, see above), that starts with
 `[blocking]` (any case, after optional indentation and one list marker,
 `-`, `*`, `+` or `1.`/`1)`;
 not inside a code fence; indented continuation lines belong to it) is a
-blocking rule; at most 10, numbered `B1`, `B2`, ... for this review and
+blocking rule; at most 10 in all, the root's first, numbered `B1`, `B2`, ... for this review and
 listed to the model under "Blocking rules". A finding the model
 says violates one carries its id in `blocking_rule`. Code checks it: the id
 must be one of the review's rules, the severity `issue`, the confidence at
@@ -346,8 +349,11 @@ replies and resolves the task, even when the reply failed; a fix
 noergler committed itself resolves its task too, though it leaves the
 thread open (the stamped row leaves every later review, so a task left
 open would block unseen). A task whose rule the target's AGENTS.md no longer marks
-(a rule past the cap of 10 is still marked), or marks reworded, is
-resolved on the next review (never when that file could not be read);
+(a rule past the cap of 10 is still marked), or marks reworded, and no
+AGENTS.md above the task's file at the PR head marks either (read for
+the check, memoized; a sibling's file does not count), is resolved on the
+next review (never when one of those files could not be read or is over
+32 KiB);
 the violation reported under the new wording is a task again. The cap
 of 3 and the switches apply before the sort and the comment cap, so a
 claim that ends a plain comment takes no slot ahead of its peers; a task

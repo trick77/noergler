@@ -429,3 +429,123 @@ func TestTaskOfAKeptRuleStays(t *testing.T) {
 		})
 	}
 }
+
+// Two changed files, one under services/pay/ and one under web/.
+const payWebDiff = `diff --git a/services/pay/a.go b/services/pay/a.go
+--- a/services/pay/a.go
++++ b/services/pay/a.go
+@@ -1,1 +1,2 @@
+ package a
++func new() {}
+diff --git a/web/x.go b/web/x.go
+--- a/web/x.go
++++ b/web/x.go
+@@ -1,1 +1,2 @@
+ package x
++func new() {}
+`
+
+// nestedBlockingHarness is blockingHarness on payWebDiff, with
+// services/pay/AGENTS.md marking one rule at the PR head: the root's rule
+// is B1, the nested one B2.
+func nestedBlockingHarness(t *testing.T, findings ...inference.ReviewFinding) *harness {
+	t.Helper()
+	h := blockingHarness(t, findings...)
+	h.bb.prDiff = payWebDiff
+	h.bb.files["src1:services/pay/a.go"] = "package a\nfunc new() {}\n"
+	h.bb.files["src1:web/x.go"] = "package x\nfunc new() {}\n"
+	h.bb.files["src1:services/pay/AGENTS.md"] = "- [blocking] Money is integer cents.\n"
+	return h
+}
+
+// markedAt is marked on another file.
+func markedAt(file, id string) inference.ReviewFinding {
+	f := marked(id, 95, "float money in "+file)
+	f.File = file
+	return f
+}
+
+// A nested file's rule blocks in or below its directory only: a task on
+// services/pay/, a plain comment on web/, logged as a rule that does not
+// cover the file.
+func TestNestedBlockingRuleCoversItsDirectory(t *testing.T) {
+	h := nestedBlockingHarness(t, markedAt("services/pay/a.go", "B2"), markedAt("web/x.go", "B2"))
+	var logs bytes.Buffer
+	h.r.log = slog.New(slog.NewTextHandler(&logs, nil))
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if p := h.llm.Reviews[0].Prompt; !strings.Contains(p, "- B1: No SQL in controllers.") ||
+		!strings.Contains(p, "- B2 (only files under `services/pay/`): Money is integer cents.") {
+		t.Errorf("the prompt must list both rules, the nested one with its directory:\n%s", p)
+	}
+	if len(h.bb.InlineTasks) != 1 || h.bb.InlineTasks[0].File != "services/pay/a.go" {
+		t.Fatalf("tasks = %+v: want one, on services/pay/a.go", h.bb.InlineTasks)
+	}
+	if len(h.bb.Inline) != 1 || h.bb.Inline[0].File != "web/x.go" {
+		t.Errorf("comments = %+v: want web/x.go as a plain comment", h.bb.Inline)
+	}
+	if !strings.Contains(logs.String(), "downgraded_unknown_rule, rule \\\"Money is integer cents. (its AGENTS.md does not cover web/x.go)\\\"") {
+		t.Errorf("the out-of-scope claim needs its line:\n%s", logs.String())
+	}
+}
+
+// A task on a nested rule: removed from that AGENTS.md it is resolved;
+// kept, or not proven gone (lookup cut short, file not looked up this
+// run), it stays.
+func TestTaskOfANestedRule(t *testing.T) {
+	const rule = "Money is integer cents."
+	payTask := func(h *harness) {
+		earlierTask(h, rule)
+		h.st.existing[0].FilePath = "services/pay/a.go"
+	}
+	for name, tweak := range map[string]func(*harness){
+		"removed": func(h *harness) {
+			h.bb.files["src1:services/pay/AGENTS.md"] = "- Money is integer cents.\n"
+		},
+		// Not in this run's diff: the files above it are read for the check.
+		"removed, file not in this run": func(h *harness) {
+			h.st.existing[0].FilePath = "services/billing/b.go"
+		},
+		// A sibling's file marks the same text: it does not cover billing/.
+		"removed, a sibling keeps the text": func(h *harness) {
+			h.st.existing[0].FilePath = "services/billing/b.go"
+			h.bb.files["src1:services/billing/AGENTS.md"] = "- Money is integer cents.\n"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := nestedBlockingHarness(t)
+			payTask(h)
+			tweak(h)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+			if !slices.Equal(h.bb.ResolvedTasks, []int{501}) {
+				t.Errorf("resolved = %v, want the task", h.bb.ResolvedTasks)
+			}
+		})
+	}
+	for name, tweak := range map[string]func(*harness){
+		"kept": func(*harness) {},
+		"kept by a file not in this run's diff": func(h *harness) {
+			h.st.existing[0].FilePath = "services/billing/b.go"
+			h.bb.files["src1:services/billing/AGENTS.md"] = "- [blocking] Money is integer cents.\n"
+		},
+		"lookup cut short": func(h *harness) {
+			delete(h.bb.files, "src1:services/pay/AGENTS.md")
+			h.bb.fileErr["src1:services/AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/services/AGENTS.md", Status: 503}
+		},
+		// Over the byte cap: what it marks is unknown.
+		"its file too large": func(h *harness) {
+			h.bb.files["src1:services/pay/AGENTS.md"] = strings.Repeat("x", nestedAgentsMaxBytes+1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := nestedBlockingHarness(t)
+			payTask(h)
+			tweak(h)
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+			if len(h.bb.ResolvedTasks) != 0 {
+				t.Errorf("resolved = %v: the task must stay", h.bb.ResolvedTasks)
+			}
+		})
+	}
+}

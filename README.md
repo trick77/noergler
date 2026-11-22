@@ -442,9 +442,10 @@ A finding the model says violates such a rule is posted as a Bitbucket **task** 
 
 - Meant for rules only a reviewer can judge. Something code can check belongs in CI; a dependency on a SNAPSHOT version already gets its own task, do not mark that rule again.
 - Probabilistic: the model may miss a violation. Code only decides which rules block and whether a claim is strong enough (severity `issue`, confidence at least 90); a weaker claim is posted as a normal comment, never dropped.
-- At most 10 marked rules per `AGENTS.md` (the rest stay normal guidelines, and a task already open under one stays open) and 3 tasks per review (the rest are comments that name the rule).
-- The rules come from the PR's **target branch**: a rule takes effect once it is merged there, and a PR cannot lift a rule by editing `AGENTS.md` itself. A rule may wrap over indented lines.
-- Removing the marker or the rule resolves its open tasks on the next review; so does rewording it (re-wrapping does not), since a task belongs to the rule's text. A violation the reworded rule still covers becomes a task again.
+- At most 10 marked rules per review, the root's first, then those of `AGENTS.md` files in subdirectories (the rest stay normal guidelines, and a task already open under one stays open), and 3 tasks per review (the rest are comments that name the rule).
+- The root `AGENTS.md`'s rules come from the PR's **target branch**: a rule takes effect once it is merged there, and a PR cannot lift it by editing `AGENTS.md` itself. A rule may wrap over indented lines.
+- An `AGENTS.md` in a subdirectory may mark rules too. They hold only for files in or below that directory, and are read from the PR itself, so a PR that edits such a file can add or lift its rules.
+- Removing the marker or the rule resolves its open tasks on the next review; so does rewording it (re-wrapping does not), since a task belongs to the rule's text. A violation the reworded rule still covers becomes a task again. A task stays open while any `AGENTS.md` that could hold its rule cannot be read.
 - The team switch `create_tasks` and the instance's `REVIEW_CREATE_TASKS` turn tasks off; findings are then normal comments.
 
 ## Running tests

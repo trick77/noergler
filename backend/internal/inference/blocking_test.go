@@ -3,6 +3,7 @@ package inference
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -39,15 +40,15 @@ func TestExtractBlockingRules(t *testing.T) {
 	}, "\n")
 	rules, over := ExtractBlockingRules(md)
 	want := []BlockingRule{
-		{"B1", "No SQL in controllers."},
-		{"B2", "Every handler checks the tenant."},
-		{"B3", "Money is nano-USD, never float."},
-		{"B4", "Numbered items count."},
-		{"B5", "So do plus items."},
-		{"B6", "Unicode indentation counts."},
-		{"B7", "A wrapped rule goes on over indented lines, all of them."},
-		{"B8", "So does"},
-		{"B9", "And a"},
+		{ID: "B1", Text: "No SQL in controllers."},
+		{ID: "B2", Text: "Every handler checks the tenant."},
+		{ID: "B3", Text: "Money is nano-USD, never float."},
+		{ID: "B4", Text: "Numbered items count."},
+		{ID: "B5", Text: "So do plus items."},
+		{ID: "B6", Text: "Unicode indentation counts."},
+		{ID: "B7", Text: "A wrapped rule goes on over indented lines, all of them."},
+		{ID: "B8", Text: "So does"},
+		{ID: "B9", Text: "And a"},
 	}
 	if fmt.Sprint(rules) != fmt.Sprint(want) || len(over) != 0 {
 		t.Errorf("rules = %q, over = %q\nwant %q", rules, over, want)
@@ -74,14 +75,45 @@ func TestRenderBlockingRules(t *testing.T) {
 	if got := RenderBlockingRules(nil); got != "" {
 		t.Errorf("no rules must render nothing, got %q", got)
 	}
-	got := RenderBlockingRules([]BlockingRule{{"B1", "No SQL."}, {"B2", "Tenant."}})
+	got := RenderBlockingRules([]BlockingRule{{ID: "B1", Text: "No SQL."}, {ID: "B2", Text: "Tenant."}})
 	if !strings.HasPrefix(got, "### Blocking rules\n") || !strings.HasSuffix(got, "- B1: No SQL.\n- B2: Tenant.") {
 		t.Errorf("block = %q", got)
+	}
+	// A nested file's rule names the files it covers.
+	got = RenderBlockingRules([]BlockingRule{{ID: "B1", Text: "No SQL."}, {ID: "B2", Text: "Cents.", Dir: "services/pay/"}})
+	if !strings.HasSuffix(got, "- B1: No SQL.\n- B2 (only files under `services/pay/`): Cents.") {
+		t.Errorf("nested block = %q", got)
+	}
+}
+
+// Several files: root first, one numbering, one cap; a text repeats only
+// within one directory, and a nested repeat of a root rule takes no slot.
+func TestExtractBlockingRulesFrom(t *testing.T) {
+	var root strings.Builder
+	for i := range 8 {
+		fmt.Fprintf(&root, "- [blocking] root %d\n", i)
+	}
+	rules, over := ExtractBlockingRulesFrom([]RuleSource{
+		{Text: root.String() + "- [blocking] shared\n"},
+		{Dir: "a/", Text: "- [blocking] shared\n- [blocking] a only\n- [blocking] a only\n- [blocking] sibling\n"},
+		{Dir: "b/", Text: "- [blocking] sibling\n- [blocking] b two\n"},
+	})
+	if len(rules) != MaxBlockingRules {
+		t.Fatalf("rules = %d, want the shared cap %d", len(rules), MaxBlockingRules)
+	}
+	if r := rules[8]; r.ID != "B9" || r.Text != "shared" || r.Dir != "" {
+		t.Errorf("B9 = %+v, want the root's shared", r)
+	}
+	if r := rules[9]; r.ID != "B10" || r.Text != "a only" || r.Dir != "a/" {
+		t.Errorf("B10 = %+v, want a/'s own rule: its repeat of the root's takes no slot", r)
+	}
+	if want := []string{"sibling", "sibling", "b two"}; !slices.Equal(over, want) {
+		t.Errorf("over = %q, want %q (a sibling's same text is a rule of its own)", over, want)
 	}
 }
 
 func TestCheckBlocking(t *testing.T) {
-	rules := []BlockingRule{{"B1", "No SQL."}, {"B2", "Tenant."}}
+	rules := []BlockingRule{{ID: "B1", Text: "No SQL."}, {ID: "B2", Text: "Tenant."}, {ID: "B3", Text: "Cents.", Dir: "pay/"}}
 	conf := func(n int) *int { return &n }
 	id := func(s string) *string { return &s }
 	for name, c := range map[string]struct {
@@ -92,7 +124,11 @@ func TestCheckBlocking(t *testing.T) {
 	}{
 		"accepted":       {ReviewFinding{Severity: "issue", Confidence: conf(90), BlockingRule: id("B2")}, BlockingTask, true, "Tenant."},
 		"id any case":    {ReviewFinding{Severity: "issue", Confidence: conf(99), BlockingRule: id(" b1 ")}, BlockingTask, true, "No SQL."},
-		"unknown id":     {ReviewFinding{Severity: "issue", Confidence: conf(99), BlockingRule: id("B3")}, BlockingUnknownRule, false, ""},
+		"unknown id":     {ReviewFinding{Severity: "issue", Confidence: conf(99), BlockingRule: id("B4")}, BlockingUnknownRule, false, ""},
+		"in scope":       {ReviewFinding{File: "pay/a.go", Severity: "issue", Confidence: conf(99), BlockingRule: id("B3")}, BlockingTask, true, "Cents."},
+		"deep in scope":  {ReviewFinding{File: "pay/x/y/a.go", Severity: "issue", Confidence: conf(99), BlockingRule: id("B3")}, BlockingTask, true, "Cents."},
+		"out of scope":   {ReviewFinding{File: "web/a.ts", Severity: "issue", Confidence: conf(99), BlockingRule: id("B3")}, BlockingUnknownRule, false, "Cents."},
+		"prefix only":    {ReviewFinding{File: "payments/a.go", Severity: "issue", Confidence: conf(99), BlockingRule: id("B3")}, BlockingUnknownRule, false, "Cents."},
 		"suggestion":     {ReviewFinding{Severity: "suggestion", Confidence: conf(99), BlockingRule: id("B1")}, BlockingSeverity, false, "No SQL."},
 		"under 90":       {ReviewFinding{Severity: "issue", Confidence: conf(89), BlockingRule: id("B1")}, BlockingConfidence, false, "No SQL."},
 		"no confidence":  {ReviewFinding{Severity: "issue", BlockingRule: id("B1")}, BlockingConfidence, false, "No SQL."},
