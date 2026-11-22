@@ -2,58 +2,75 @@ package review
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/webhook"
 )
 
-// Candidates are the changed files' directories below the root, down to
-// three levels: deepest first (the nearest file applies, and a parent
-// covers at least its children's files), then by coverage, then by path;
-// root files probe nothing.
-func TestNestedCandidatesDeepestFirst(t *testing.T) {
+// Candidates are every ancestor directory of a changed file below the root,
+// at any depth: shallow first, then by coverage, then by path; root files
+// probe nothing.
+func TestNestedCandidatesEveryAncestor(t *testing.T) {
 	got, cut := nestedCandidates([]string{
 		"README.md",
 		"services/pay/api/handler.go",
 		"services/pay/api/routes.go",
-		"services/pay/a/b/c/deep.go",
+		"services/pay/a/b/c/d/deep.go",
 		"web/app.ts",
 	})
-	want := []string{"services/pay/api/", "services/pay/a/", "services/pay/", "services/", "web/"}
+	want := []string{
+		"services/", "web/", "services/pay/", "services/pay/api/", "services/pay/a/",
+		"services/pay/a/b/", "services/pay/a/b/c/", "services/pay/a/b/c/d/",
+	}
 	if !slices.Equal(got, want) || cut != 0 {
 		t.Errorf("candidates = %v (cut %d), want %v", got, cut, want)
 	}
-	// Nine services under one parent: every service directory is probed
-	// before the parent, which a coverage-first order would not do.
-	var many []string
-	for _, d := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"} {
-		many = append(many, "services/"+d+"/x.go")
+}
+
+// A module root with one changed file outranks deep packages with many: a
+// cut never drops it.
+func TestNestedCandidatesCutKeepsAThinModule(t *testing.T) {
+	var paths []string
+	for i := range 50 {
+		pkg := fmt.Sprintf("services/a/src/main/java/com/acme/pkg%d/", i)
+		paths = append(paths, pkg+"A.java", pkg+"B.java")
 	}
-	got, cut = nestedCandidates(many)
-	if len(got) != nestedAgentsProbes || cut != 2 || slices.Contains(got, "services/") {
-		t.Errorf("probes = %v, cut %d: want %d service dirs and the rest cut", got, cut, nestedAgentsProbes)
+	paths = append(paths, "services/b/x.go")
+	got, cut := nestedCandidates(paths)
+	if cut == 0 || !slices.Contains(got, "services/b/") {
+		t.Errorf("services/b/ must be probed (cut %d): %v", cut, got)
 	}
 }
 
-// A found file is kept only where it is some changed file's nearest one;
-// the most-covering win the cap; the kept ones go out in path order.
-func TestPickNestedKeepsTheNearest(t *testing.T) {
-	found := []nestedAgentsMD{{Dir: "services/"}, {Dir: "services/pay/"}, {Dir: "web/"}, {Dir: "lib/"}, {Dir: "tools/"}}
-	paths := []string{"services/pay/a.go", "services/pay/b.go", "web/x.ts", "lib/l.go", "tools/t.go", "tools/u.go"}
-	var dirs []string
-	kept, left := pickNested(found, paths)
-	for _, n := range kept {
-		dirs = append(dirs, n.Dir)
+// Over the probe cap, the deep package directories of a Java monorepo go
+// first: the parent and every module root are probed.
+func TestNestedCandidatesCutKeepsModuleRoots(t *testing.T) {
+	var paths []string
+	modules := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+	for _, m := range modules {
+		paths = append(paths, "services/"+m+"/src/main/java/com/acme/X.java")
 	}
-	// services/ is nobody's nearest (services/pay/ is); of the four left,
-	// the two covering two files and then lib/ before web/ by path.
-	if want := []string{"lib/", "services/pay/", "tools/"}; !slices.Equal(dirs, want) {
-		t.Errorf("kept = %v, want %v", dirs, want)
+	got, cut := nestedCandidates(paths)
+	// services/ + 9 modules x 6 directories = 55, five over the cap.
+	if len(got) != nestedAgentsProbes || cut != 55-nestedAgentsProbes {
+		t.Fatalf("probes %d, cut %d", len(got), cut)
 	}
-	if want := []string{"services/AGENTS.md (not the nearest)", "web/AGENTS.md (over the cap)"}; !slices.Equal(left, want) {
-		t.Errorf("left = %v, want %v (each named, for the log)", left, want)
+	if !slices.Contains(got, "services/") {
+		t.Errorf("the shared parent must be probed: %v", got)
+	}
+	for _, m := range modules {
+		if !slices.Contains(got, "services/"+m+"/") {
+			t.Errorf("module root services/%s/ not probed", m)
+		}
+	}
+	for _, m := range modules[4:] {
+		if slices.Contains(got, "services/"+m+"/src/main/java/com/acme/") {
+			t.Errorf("the deepest directories are the ones cut, got services/%s/.../acme/", m)
+		}
 	}
 }
 
@@ -62,7 +79,7 @@ func TestWithNestedDropsOverTheLimit(t *testing.T) {
 	nested := []nestedAgentsMD{{Dir: "a/", Content: "aaaa"}, {Dir: "b/", Content: "bbbb"}}
 	count := func(s string) int { return len(s) }
 	all, dropped := withNested("ROOT", nested, 0, count)
-	if !strings.Contains(all, "### a/AGENTS.md (applies to files under `a/`)\n\naaaa") || len(dropped) != 0 {
+	if !strings.Contains(all, "### a/AGENTS.md (applies to files under `a/`; where it differs from the guidelines above, it wins for them)\n\naaaa") || len(dropped) != 0 {
 		t.Fatalf("no limit: %q, dropped %v", all, dropped)
 	}
 	// Room for the root and the first file, not the second.
@@ -73,6 +90,33 @@ func TestWithNestedDropsOverTheLimit(t *testing.T) {
 	}
 	if only, _ := withNested("", nested[:1], 0, count); strings.HasPrefix(only, "\n") || !strings.HasPrefix(only, "### a/") {
 		t.Errorf("no root: %q", only)
+	}
+}
+
+// With the limit off, the root is not counted but the nested files alone
+// stay under nestedUnlimitedTokens.
+func TestWithNestedUnlimitedStillCapsNested(t *testing.T) {
+	big := strings.Repeat("x", nestedUnlimitedTokens/2)
+	nested := []nestedAgentsMD{{Dir: "a/", Content: big}, {Dir: "b/", Content: big}, {Dir: "c/", Content: big}}
+	count := func(s string) int { return len(s) }
+	root := strings.Repeat("r", 3*nestedUnlimitedTokens)
+	all, dropped := withNested(root, nested, 0, count)
+	if !strings.Contains(all, "### a/AGENTS.md") || !slices.Equal(dropped, []string{"b/AGENTS.md", "c/AGENTS.md"}) {
+		t.Errorf("dropped %v, want b/ and c/ (a/ fits whatever the root's size)", dropped)
+	}
+}
+
+// The memo starts over past its byte cap.
+func TestNestedMemoByteCap(t *testing.T) {
+	var c nestedMemo
+	half := nestedProbe{content: strings.Repeat("x", nestedMemoMaxBytes/2+1)}
+	c.put("k1", "a/", half)
+	c.put("k2", "a/", half)
+	if _, ok := c.get("k1", "a/"); ok {
+		t.Errorf("k1 must be gone past the byte cap")
+	}
+	if _, ok := c.get("k2", "a/"); !ok || c.bytes != len(half.content) {
+		t.Errorf("k2 must be held alone, bytes %d", c.bytes)
 	}
 }
 
@@ -99,14 +143,15 @@ const nestedDiff = `diff --git a/services/pay/a.go b/services/pay/a.go
 +func new() {}
 `
 
-// A review carries the nested AGENTS.md of the changed file's directory
-// after the root one, read at the PR head.
-func TestReviewCarriesTheNestedAgentsMD(t *testing.T) {
+// A review carries the whole chain below the root: every AGENTS.md above
+// the changed file, read at the PR head, parent before child.
+func TestReviewCarriesTheNestedChain(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.bb.prDiff = nestedDiff
 		h.bb.files["src1:services/pay/a.go"] = "package a\nfunc new() {}\n"
 		h.bb.files["src1:services/pay/AGENTS.md"] = "Money is integer cents."
-		h.bb.files["src1:services/AGENTS.md"] = "Never used: not the nearest."
+		h.bb.files["src1:services/AGENTS.md"] = "Every service logs with team=."
+		h.bb.files["src1:web/AGENTS.md"] = "Never used: no changed file below."
 	})
 
 	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
@@ -115,11 +160,106 @@ func TestReviewCarriesTheNestedAgentsMD(t *testing.T) {
 		t.Fatalf("reviews = %d, want 1", len(h.llm.Reviews))
 	}
 	p := h.llm.Reviews[0].Prompt
-	root, nested := strings.Index(p, "Be terse."), strings.Index(p, "### services/pay/AGENTS.md")
-	if root < 0 || nested < root || !strings.Contains(p, "Money is integer cents.") {
-		t.Errorf("the prompt must carry the root rules, then the nested file:\n%s", p)
+	root := strings.Index(p, "Be terse.")
+	parent := strings.Index(p, "### services/AGENTS.md")
+	child := strings.Index(p, "### services/pay/AGENTS.md")
+	if root < 0 || parent < root || child < parent {
+		t.Errorf("want root, then services/, then services/pay/:\n%s", p)
+	}
+	if !strings.Contains(p, "Money is integer cents.") || !strings.Contains(p, "Every service logs with team=.") {
+		t.Errorf("both nested files must be carried:\n%s", p)
 	}
 	if strings.Contains(p, "Never used") {
-		t.Errorf("a file nearer to every changed file wins:\n%s", p)
+		t.Errorf("a file above no changed file must not be carried:\n%s", p)
+	}
+}
+
+// No depth limit: a file five levels down is found.
+func TestFetchNestedFindsAnyDepth(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.bb.files["c1:a/b/c/d/e/AGENTS.md"] = "deep rules"
+	})
+	got := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"a/b/c/d/e/f/x.go"})
+	if len(got) != 1 || got[0].Dir != "a/b/c/d/e/" {
+		t.Errorf("found %v, want a/b/c/d/e/", got)
+	}
+}
+
+// A second lookup at the same commit reads nothing again; another commit,
+// one that adds or removes a file, is probed afresh.
+func TestFetchNestedMemoByCommit(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	paths := []string{"services/pay/a.go"}
+	look := func(commit string) []nestedAgentsMD {
+		return h.r.fetchNestedAgentsMD(ctx, "P", "R", commit, "t", paths)
+	}
+	h.bb.files["c1:services/pay/AGENTS.md"] = "pay rules"
+	if got := look("c1"); len(got) != 1 {
+		t.Fatalf("c1: %v", got)
+	}
+	look("c1")
+	for _, f := range []string{"c1:services/AGENTS.md", "c1:services/pay/AGENTS.md"} {
+		if n := h.bb.fileReads[f]; n != 1 {
+			t.Errorf("%s read %d times, want 1 (the second lookup from the memo)", f, n)
+		}
+	}
+	// c2 adds services/AGENTS.md, c3 removes both.
+	h.bb.files["c2:services/AGENTS.md"] = "shared"
+	h.bb.files["c2:services/pay/AGENTS.md"] = "pay rules"
+	if got := look("c2"); len(got) != 2 {
+		t.Errorf("c2: %v, want both", got)
+	}
+	if got := look("c3"); len(got) != 0 {
+		t.Errorf("c3: %v, want none", got)
+	}
+}
+
+// A failed read is not a fact about the commit: never remembered, so the
+// next lookup at the same commit reads again and finds the file.
+func TestFetchNestedErrorNotRemembered(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	key := "c1:services/AGENTS.md"
+	h.bb.fileErr[key] = &bitbucket.StatusError{Method: "GET", Path: "/raw/services/AGENTS.md", Status: 500}
+	if got := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", []string{"services/a.go"}); len(got) != 0 {
+		t.Fatalf("first lookup: %v, want none", got)
+	}
+	delete(h.bb.fileErr, key)
+	h.bb.files[key] = "shared"
+	if got := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", []string{"services/a.go"}); len(got) != 1 {
+		t.Errorf("second lookup: %v, want the file", got)
+	}
+}
+
+// The first failed read ends the lookup: the deeper directories are not
+// probed against a Bitbucket that is failing.
+func TestFetchNestedStopsOnFirstError(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bb.fileErr["c1:services/AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/services/AGENTS.md", Status: 503}
+	h.bb.files["c1:services/pay/AGENTS.md"] = "pay rules"
+	got := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"services/pay/api/a.go"})
+	if len(got) != 0 {
+		t.Errorf("found %v after a failed read", got)
+	}
+	for _, f := range []string{"c1:services/pay/AGENTS.md", "c1:services/pay/api/AGENTS.md"} {
+		if n := h.bb.fileReads[f]; n != 0 {
+			t.Errorf("%s read %d times after the lookup failed", f, n)
+		}
+	}
+}
+
+// A file over the byte cap is left out, remembered as such, and logged on
+// every lookup.
+func TestFetchNestedOversizeLeftOut(t *testing.T) {
+	h := newHarness(t, nil)
+	h.bb.files["c1:services/AGENTS.md"] = strings.Repeat("x", nestedAgentsMaxBytes+1)
+	for range 2 {
+		if got := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"services/a.go"}); len(got) != 0 {
+			t.Errorf("oversize kept: %v", got)
+		}
+	}
+	if n := h.bb.fileReads["c1:services/AGENTS.md"]; n != 1 {
+		t.Errorf("read %d times, want 1", n)
 	}
 }

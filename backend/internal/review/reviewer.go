@@ -102,6 +102,8 @@ type Reviewer struct {
 	defaultBranches branchCache
 	// snapshotMemo is each PR's last SNAPSHOT hits by its build files.
 	snapshotMemo hitsMemo
+	// nestedMemo is each commit's nested AGENTS.md probes (nestedagents.go).
+	nestedMemo nestedMemo
 	// template is the review prompt, mentionTmpl the Q&A prompt; both the
 	// compiled-in ones unless a test overrides them.
 	template    string

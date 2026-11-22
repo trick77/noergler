@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/diff"
@@ -16,17 +17,32 @@ import (
 // An AGENTS.md below the root holds the rules of one part of a monorepo.
 // The root file alone made such a rule apply to everything or nothing.
 //
-// Bounded, because every probe is a Bitbucket call on the single worker:
-// candidates are the directories of the changed files down to
-// nestedAgentsDepth, at most nestedAgentsProbes of them read, at most
-// nestedAgentsKept kept, none over nestedAgentsMaxBytes (it is tokenized on
-// the worker, and a rules file that size is not one).
+// Only an ancestor directory of a changed file can hold a file that applies
+// to it, so those are probed, at any depth: a cap on depth missed a
+// module's file below services/x/src/ (user, 2026-11-22). Bounded by count
+// instead, because every probe is a Bitbucket call on the single worker:
+// at most nestedAgentsProbes per lookup, of the order a review already
+// spends on thread checks (maxThreadChecks). None over nestedAgentsMaxBytes
+// is used (it is tokenized on the worker, and a rules file that size is
+// not one). How many are kept is the token limit's alone (withNested).
 const (
-	nestedAgentsDepth    = 3
-	nestedAgentsProbes   = 8
-	nestedAgentsKept     = 3
+	nestedAgentsProbes   = 50
 	nestedAgentsMaxBytes = 32 << 10
 )
+
+// nestedMemoMax and nestedMemoMaxBytes bound nestedMemo by commits held and
+// by file content held (each commit keeps its own copy): past either the
+// memo starts over (probes are repeated, nothing more).
+const (
+	nestedMemoMax      = 1000
+	nestedMemoMaxBytes = 16 << 20
+)
+
+// nestedUnlimitedTokens caps the nested files together when the team turned
+// the hard token limit off (0): that switch is about the root file, and
+// without a cap a wide monorepo PR could carry dozens of 32 KiB files and
+// overflow the model's context. The config default.
+const nestedUnlimitedTokens = 7000
 
 // nestedAgentsMD is one AGENTS.md below the repo root.
 type nestedAgentsMD struct {
@@ -54,11 +70,12 @@ func prPaths(diffs ...string) []string {
 }
 
 // nestedCandidates are the directories an AGENTS.md is looked for in: every
-// ancestor of a changed file below the root, down to nestedAgentsDepth.
-// Deepest first, since the nearest file is the one that applies and a
-// parent always covers at least its children's files; then by how many
-// changed files sit under it, then by path. Path only, never content: the
-// same PR probes the same directories. cut is how many did not fit.
+// ancestor of a changed file below the root, at any depth. Shallow first,
+// then by how many changed files sit under it, then by path, so a cut drops
+// deep package directories (services/x/src/main/java/...) before any module
+// root, where such files live, however many files a package holds. Path
+// only, never content: the same PR probes the same directories. cut is how
+// many did not fit.
 func nestedCandidates(paths []string) (dirs []string, cut int) {
 	under := map[string]int{}
 	for _, p := range paths {
@@ -66,7 +83,7 @@ func nestedCandidates(paths []string) (dirs []string, cut int) {
 		if parts[0] == "." {
 			continue
 		}
-		for depth := 1; depth <= min(len(parts), nestedAgentsDepth); depth++ {
+		for depth := 1; depth <= len(parts); depth++ {
 			under[strings.Join(parts[:depth], "/")+"/"]++
 		}
 	}
@@ -75,7 +92,7 @@ func nestedCandidates(paths []string) (dirs []string, cut int) {
 	}
 	slices.SortFunc(dirs, func(a, b string) int {
 		if da, db := strings.Count(a, "/"), strings.Count(b, "/"); da != db {
-			return db - da
+			return da - db
 		}
 		if under[a] != under[b] {
 			return under[b] - under[a]
@@ -88,49 +105,88 @@ func nestedCandidates(paths []string) (dirs []string, cut int) {
 	return dirs, 0
 }
 
-// pickNested keeps the found files that are some changed file's nearest
-// AGENTS.md, the ones nearest to most changed files first, at most
-// nestedAgentsKept, in path order (the prompt's order depends on paths
-// only). left are the found files not kept.
-func pickNested(found []nestedAgentsMD, paths []string) (kept []nestedAgentsMD, left []string) {
-	nearest := map[string]int{}
-	for _, p := range paths {
-		best := ""
-		for _, f := range found {
-			if strings.HasPrefix(p, f.Dir) && len(f.Dir) > len(best) {
-				best = f.Dir
-			}
-		}
-		if best != "" {
-			nearest[best]++
-		}
+// nestedProbe is what one directory holds at one commit: a usable file
+// (content), or none, or one over nestedAgentsMaxBytes (oversize, its
+// size). Never a failed read: that is not a fact about the commit.
+type nestedProbe struct {
+	content  string
+	oversize int
+}
+
+// nestedMemo is each commit's probes, by "project/repo@commit" and
+// directory. A commit never changes, so an answer holds for every later
+// lookup at it (a finding reply, a Q&A, a retry) and never for another
+// commit: a file added or removed is a new head, probed afresh, whether
+// noergler saw the commit that did it or not.
+type nestedMemo struct {
+	mu    sync.Mutex
+	m     map[string]map[string]nestedProbe
+	bytes int
+}
+
+func (c *nestedMemo) get(key, dir string) (nestedProbe, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, ok := c.m[key][dir]
+	return p, ok
+}
+
+func (c *nestedMemo) put(key, dir string, p nestedProbe) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Starts over for a commit it does not hold past the commit cap, or for
+	// content past the byte cap.
+	_, held := c.m[key]
+	if c.m == nil || (!held && len(c.m) >= nestedMemoMax) || c.bytes+len(p.content) > nestedMemoMaxBytes {
+		c.m = map[string]map[string]nestedProbe{}
+		c.bytes = 0
 	}
-	for _, f := range found {
-		if nearest[f.Dir] > 0 {
-			kept = append(kept, f)
-		} else {
-			left = append(left, f.Path()+" (not the nearest)")
-		}
+	c.bytes += len(p.content)
+	if c.m[key] == nil {
+		c.m[key] = map[string]nestedProbe{}
 	}
-	slices.SortStableFunc(kept, func(a, b nestedAgentsMD) int {
-		if nearest[a.Dir] != nearest[b.Dir] {
-			return nearest[b.Dir] - nearest[a.Dir]
-		}
-		return strings.Compare(a.Dir, b.Dir)
-	})
-	for _, f := range kept[min(len(kept), nestedAgentsKept):] {
-		left = append(left, f.Path()+" (over the cap)")
+	c.m[key][dir] = p
+}
+
+// probeNested reads one directory's AGENTS.md at a commit, through the
+// memo. ok is false for a read that failed for a reason other than a 404:
+// logged, not remembered, so the next lookup at the same commit reads
+// again.
+func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag, dir string) (p nestedProbe, ok bool) {
+	key := project + "/" + repo + "@" + commit
+	if p, held := r.nestedMemo.get(key, dir); held {
+		return p, true
 	}
-	kept = kept[:min(len(kept), nestedAgentsKept)]
-	slices.SortFunc(kept, func(a, b nestedAgentsMD) int { return strings.Compare(a.Dir, b.Dir) })
-	return kept, left
+	file := dir + "AGENTS.md"
+	content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, file)
+	var status *bitbucket.StatusError
+	switch {
+	case errors.As(err, &status) && status.Status == http.StatusNotFound:
+	case err != nil:
+		if ctx.Err() == nil {
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: %s not read, reviewing without it: %v", prTag, file, err))
+		}
+		return nestedProbe{}, false
+	case strings.TrimSpace(content) == "":
+	case len(content) > nestedAgentsMaxBytes:
+		p.oversize = len(content)
+	default:
+		p.content = content
+	}
+	r.nestedMemo.put(key, dir, p)
+	return p, true
 }
 
 // fetchNestedAgentsMD reads the AGENTS.md files below the root that apply to
 // the changed paths, at one commit (the PR head: a file the PR adds or
-// changes is the PR's own rule set). A missing file is absent; a read that
-// fails otherwise is absent too, but logged: the root rules still hold, and
-// the next run may read it.
+// changes is the PR's own rule set). Every file found applies: each is in
+// an ancestor directory of a changed file, so a file gets the whole chain
+// from the root down (user, 2026-11-22), the deeper one winning where they
+// differ (nestedBlock says so). In path order, a parent before its
+// children. A missing file is absent; a read that fails otherwise ends the
+// lookup, logged once: Bitbucket failing is rarely one file's fault, and
+// each further probe would hold the shared worker. The root rules still
+// hold, and the next run may read it.
 func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag string, paths []string) []nestedAgentsMD {
 	if commit == "" {
 		return nil
@@ -140,32 +196,26 @@ func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commi
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for an AGENTS.md (cap %d)", prTag, cut, nestedAgentsProbes))
 	}
 	var found []nestedAgentsMD
-	for _, dir := range dirs {
+probe:
+	for i, dir := range dirs {
 		if ctx.Err() != nil {
 			return nil
 		}
-		p := dir + "AGENTS.md"
-		content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, p)
-		var status *bitbucket.StatusError
+		p, ok := r.probeNested(ctx, project, repo, commit, prTag, dir)
 		switch {
-		case errors.As(err, &status) && status.Status == http.StatusNotFound:
-			continue
-		case err != nil:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: %s not read, reviewing without it: %v", prTag, p, err))
-			continue
-		case strings.TrimSpace(content) == "":
-			continue
-		case len(content) > nestedAgentsMaxBytes:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: %s left out: %d bytes, over %d", prTag, p, len(content), nestedAgentsMaxBytes))
-			continue
+		case !ok:
+			if rest := len(dirs) - i - 1; rest > 0 {
+				r.log.WarnContext(ctx, fmt.Sprintf("%s: nested AGENTS.md lookup stopped, %d director(ies) not probed", prTag, rest))
+			}
+			break probe
+		case p.oversize > 0:
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: %sAGENTS.md left out: %d bytes, over %d", prTag, dir, p.oversize, nestedAgentsMaxBytes))
+		case p.content != "":
+			found = append(found, nestedAgentsMD{Dir: dir, Content: p.content})
 		}
-		found = append(found, nestedAgentsMD{Dir: dir, Content: content})
 	}
-	kept, left := pickNested(found, paths)
-	if len(left) > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: AGENTS.md found but not used: %s", prTag, strings.Join(left, ", ")))
-	}
-	for _, n := range kept {
+	slices.SortFunc(found, func(a, b nestedAgentsMD) int { return strings.Compare(a.Dir, b.Dir) })
+	for _, n := range found {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: loaded %s", prTag, n.Path()))
 		if strings.Contains(strings.ToLower(n.Content), "[blocking]") {
 			// Blocking rules are the target branch's root file only: a
@@ -173,22 +223,29 @@ func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commi
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: [blocking] lines in %s are ignored: only the root AGENTS.md of the target branch blocks", prTag, n.Path()))
 		}
 	}
-	return kept
+	return found
 }
 
-// nestedBlock is one nested file as the prompt carries it.
+// nestedBlock is one nested file as the prompt carries it. The heading
+// tells the model the scope and that the deeper file wins, so no prompt
+// needs a line of its own for it.
 func nestedBlock(n nestedAgentsMD) string {
-	return fmt.Sprintf("### %s (applies to files under `%s`)\n\n%s", n.Path(), n.Dir, strings.TrimRight(n.Content, "\n"))
+	return fmt.Sprintf("### %s (applies to files under `%s`; where it differs from the guidelines above, it wins for them)\n\n%s",
+		n.Path(), n.Dir, strings.TrimRight(n.Content, "\n"))
 }
 
 // withNested is the root AGENTS.md followed by the nested ones, each under
-// a line naming the directory it applies to. With a token limit (> 0) a
-// nested file that would take the whole over it is left out, in path order,
-// and named in dropped: the root decides whether a review runs, never a
-// nested file. Each part is counted once.
+// a line naming the directory it applies to. A nested file that would take
+// the whole over the token limit is left out, in path order, and named in
+// dropped: the root decides whether a review runs, never a nested file.
+// With the limit off (<= 0) the root is not counted and the nested files
+// alone stay under nestedUnlimitedTokens. Each part is counted once.
 func withNested(root string, nested []nestedAgentsMD, maxTokens int, count func(string) int) (combined string, dropped []string) {
 	var parts []string
-	total := 0
+	total, limit := 0, maxTokens
+	if limit <= 0 {
+		limit = nestedUnlimitedTokens
+	}
 	if strings.TrimSpace(root) != "" {
 		parts = append(parts, strings.TrimRight(root, "\n"))
 		if maxTokens > 0 {
@@ -197,14 +254,12 @@ func withNested(root string, nested []nestedAgentsMD, maxTokens int, count func(
 	}
 	for _, n := range nested {
 		block := nestedBlock(n)
-		if maxTokens > 0 {
-			if c := count(block); total+c > maxTokens {
-				dropped = append(dropped, n.Path())
-				continue
-			} else {
-				total += c
-			}
+		c := count(block)
+		if total+c > limit {
+			dropped = append(dropped, n.Path())
+			continue
 		}
+		total += c
 		parts = append(parts, block)
 	}
 	return strings.Join(parts, "\n\n"), dropped

@@ -259,8 +259,16 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 - Nested AGENTS.md: picked from the whole PR's paths, never one push's
   (`{repo_instructions}` sits at the top: a set that followed the push
   would break the prefix cache), path order only; never a gate (the root
-  decides skips), never a blocking rule. Probes and kept files are capped:
-  each probe is a Bitbucket call on the worker.
+  decides skips, user 2026-11-22: "auf keinen fall optional"), never a
+  blocking rule. Every ancestor of a changed file at any depth, the whole
+  chain applies (user, 2026-11-22: a depth cap missed module files below
+  `src/`, nearest-only dropped shared parent rules). Probes capped by count
+  (each a Bitbucket call on the worker), shallow first so a cut drops deep
+  dirs, never a module root; the first failed read ends the lookup. Files
+  kept only by the token limit; limit off (0) still caps nested alone at
+  7000 (a wide PR overflowed the context otherwise). Memo key is the commit, never a
+  TTL or the last reviewed commit (a file added in an unseen commit is a new
+  head anyway); a failed read is never remembered.
 - Blocking rules (user, 2026-11-15): code decides which rules block
   (`[blocking]` line prefix in the TARGET branch's AGENTS.md, never the
   PR's: the gated branch must not lift its gate; `ExtractBlockingRules`,

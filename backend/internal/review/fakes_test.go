@@ -51,7 +51,9 @@ type fakeBitbucket struct {
 	changesErr error
 
 	files map[string]string // "commit:path" -> content
-	blobs map[string][]byte // "commit:path" -> bytes, for FetchFileBytes
+	// fileReads counts FetchFileContent calls by "commit:path".
+	fileReads map[string]int
+	blobs     map[string][]byte // "commit:path" -> bytes, for FetchFileBytes
 	// byteReads counts FetchFileBytes calls; changeSet answers
 	// FetchPRChangeSet, failing with changeSetErr.
 	byteReads    int
@@ -216,6 +218,7 @@ func newFakeBitbucket() *fakeBitbucket {
 	return &fakeBitbucket{
 		bot:           "noergler",
 		files:         map[string]string{},
+		fileReads:     map[string]int{},
 		blobs:         map[string][]byte{},
 		fileErr:       map[string]error{},
 		comments:      map[int]*bitbucket.Comment{},
@@ -283,6 +286,9 @@ func (f *fakeBitbucket) FetchPRChanges(_ context.Context, _, _ string, _ int) ([
 
 func (f *fakeBitbucket) FetchFileContent(_ context.Context, _, _, commit, path string) (string, error) {
 	key := commit + ":" + path
+	f.mu.Lock()
+	f.fileReads[key]++
+	f.mu.Unlock()
 	if err, ok := f.fileErr[key]; ok {
 		return "", err
 	}
