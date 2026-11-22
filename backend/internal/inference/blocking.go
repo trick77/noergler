@@ -41,6 +41,22 @@ const (
 type BlockingRule struct {
 	ID   string
 	Text string
+	// Dir is the directory of the AGENTS.md below the root the rule comes
+	// from ("services/pay/"), "" for the root file. A rule with a Dir
+	// covers only the files in or below it (user, 2026-11-22).
+	Dir string
+}
+
+// Covers reports whether the rule applies to file: a root rule to every
+// file, a nested one to the files in or below its directory.
+func (r BlockingRule) Covers(file string) bool {
+	return r.Dir == "" || strings.HasPrefix(file, r.Dir)
+}
+
+// RuleSource is one AGENTS.md: its directory ("" for the root) and text.
+type RuleSource struct {
+	Dir  string
+	Text string
 }
 
 // blockingMarker is `[blocking]` at the start of a line, after optional
@@ -63,6 +79,38 @@ var listItem = regexp.MustCompile(`^[\s\p{Zs}]*(?:[-*+][\s\p{Zs}]|\p{Nd}+[.)][\s
 // empty one never. over is the texts of the marked rules past
 // MaxBlockingRules, left plain: still marked, so their open tasks stay.
 func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over []string) {
+	return ExtractBlockingRulesFrom([]RuleSource{{Text: agentsMD}})
+}
+
+// ExtractBlockingRulesFrom is ExtractBlockingRules over several files in
+// the order given (the root first, then the nested ones in path order):
+// one numbering, one MaxBlockingRules cap shared by all, so the root's
+// rules come first. A text repeats only within one directory: the same
+// rule in two sibling modules is two rules, each covering its own. A
+// nested repeat of a root rule takes no slot: the root's covers every file.
+func ExtractBlockingRulesFrom(sources []RuleSource) (rules []BlockingRule, over []string) {
+	seen := map[string]bool{}
+	for _, s := range sources {
+		for _, t := range markedTexts(s.Text) {
+			text := capRunes(NormalizeRule(t), maxBlockingRuleRunes)
+			key := s.Dir + "\x00" + text
+			if text == "" || seen[key] || seen["\x00"+text] {
+				continue
+			}
+			seen[key] = true
+			if len(rules) == MaxBlockingRules {
+				over = append(over, text)
+				continue
+			}
+			rules = append(rules, BlockingRule{ID: fmt.Sprintf("B%d", len(rules)+1), Text: text, Dir: s.Dir})
+		}
+	}
+	return rules, over
+}
+
+// markedTexts are the raw texts of agentsMD's marked rules, in file order,
+// wrapped lines joined.
+func markedTexts(agentsMD string) []string {
 	var texts []string
 	open := false // the last text may take a continuation line
 	fence := ""
@@ -92,20 +140,7 @@ func ExtractBlockingRules(agentsMD string) (rules []BlockingRule, over []string)
 		}
 		open = false
 	}
-	seen := map[string]bool{}
-	for _, t := range texts {
-		text := capRunes(NormalizeRule(t), maxBlockingRuleRunes)
-		if text == "" || seen[text] {
-			continue
-		}
-		seen[text] = true
-		if len(rules) == MaxBlockingRules {
-			over = append(over, text)
-			continue
-		}
-		rules = append(rules, BlockingRule{ID: fmt.Sprintf("B%d", len(rules)+1), Text: text})
-	}
-	return rules, over
+	return texts
 }
 
 // NormalizeRule is a rule's text as rules are compared: whitespace runs
@@ -133,6 +168,10 @@ func RenderBlockingRules(rules []BlockingRule) string {
 	b.WriteString("### Blocking rules\n\n")
 	b.WriteString("The project marks these guidelines as blocking. A finding that violates one of them names its id in `blocking_rule`:\n\n")
 	for _, r := range rules {
+		if r.Dir != "" {
+			fmt.Fprintf(&b, "- %s (only files under `%s`): %s\n", r.ID, r.Dir, r.Text)
+			continue
+		}
 		fmt.Fprintf(&b, "- %s: %s\n", r.ID, r.Text)
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -193,10 +232,13 @@ func taskRank(f ReviewFinding) int {
 }
 
 // CheckBlocking is the blunt check of one marked finding: the rule must be
-// one of rules, the severity `issue`, the confidence at least
-// BlockingMinConfidence. ok false = downgraded, for the reason given. The
-// rule is returned whenever its id is known, ok or not. The caps and the
-// switches are the caller's.
+// one of rules and cover the finding's file, the severity `issue`, the
+// confidence at least BlockingMinConfidence. ok false = downgraded, for
+// the reason given. The rule is returned whenever its id is known, ok or
+// not. A rule that does not cover the file is BlockingUnknownRule (user,
+// 2026-11-22): for that file there is no such rule, and the outcome needs
+// no value of its own; the returned rule tells the two apart. The caps and
+// the switches are the caller's.
 func CheckBlocking(f ReviewFinding, rules []BlockingRule) (rule *BlockingRule, outcome BlockingOutcome, ok bool) {
 	id := strings.ToUpper(strings.TrimSpace(*f.BlockingRule))
 	for i := range rules {
@@ -208,6 +250,8 @@ func CheckBlocking(f ReviewFinding, rules []BlockingRule) (rule *BlockingRule, o
 	switch {
 	case rule == nil:
 		return nil, BlockingUnknownRule, false
+	case !rule.Covers(f.File):
+		return rule, BlockingUnknownRule, false
 	case f.Severity != "issue":
 		return rule, BlockingSeverity, false
 	case f.Confidence == nil || *f.Confidence < BlockingMinConfidence:

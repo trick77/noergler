@@ -231,7 +231,7 @@ func main() {
 			// the root's, and the summary and run page name it.
 			if path == "e2e/AGENTS.md" {
 				w.Header().Set("Content-Type", "text/plain")
-				_, _ = w.Write([]byte("# E2E\n\nSnapshots are regenerated, never edited.\n"))
+				_, _ = w.Write([]byte("# E2E\n\n- [blocking] Snapshots are regenerated, never edited.\n"))
 				return
 			}
 			if body, ok := sampleFiles[path]; ok {

@@ -225,11 +225,6 @@ probe:
 	slices.SortFunc(left, func(a, b store.AgentsMDLeft) int { return strings.Compare(a.Path, b.Path) })
 	for _, n := range found {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: loaded %s", prTag, n.Path()))
-		if strings.Contains(strings.ToLower(n.Content), "[blocking]") {
-			// Blocking rules are the target branch's root file only: a
-			// branch must not lift its own gate, and one place decides.
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: [blocking] lines in %s are ignored: only the root AGENTS.md of the target branch blocks", prTag, n.Path()))
-		}
 	}
 	return found, left, incomplete
 }

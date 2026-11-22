@@ -97,8 +97,13 @@ func (r *Reviewer) logClaim(ctx context.Context, prTag string, f inference.Revie
 		return
 	}
 	outcome, rule := f.Blocking, f.BlockingText
-	if rule == "" {
+	switch {
+	case rule == "":
 		rule = "unknown id " + strings.TrimSpace(*f.BlockingRule)
+	case outcome == inference.BlockingUnknownRule:
+		// A known rule refused as unknown: a nested file's rule that does
+		// not cover this file (CheckBlocking).
+		rule += " (its AGENTS.md does not cover " + f.File + ")"
 	}
 	conf := "none"
 	if f.Confidence != nil {
@@ -118,11 +123,19 @@ func taskDone(c *bitbucket.Comment) bool {
 // marks: the rule does not block anymore, so neither may its task. The
 // finding is settled with it, as when a person resolves the task. Only
 // when tasks are on and AGENTS.md was read for sure (known): a fetch that
-// failed reads as no rules and would resolve every task. marked holds
-// every marked rule's text, those past the cap too: a rule pushed past it
-// is still marked, and its task stays.
-func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTag string, existing []store.Finding,
-	marked map[string]bool, known bool) []store.Finding {
+// failed reads as no rules and would resolve every task. rootMarked holds
+// the root's marked rule texts, those past the cap too: a rule pushed past
+// it is still marked, and its task stays.
+//
+// A task's rule came from the root or from an AGENTS.md above its file;
+// the row keeps the text only. So a text the root does not mark is looked
+// for in the files above the task's file at the PR head (stillMarked:
+// memoized probes, mostly no call), and only those: the same text in a
+// sibling module's file does not cover it. Anything not known for sure
+// (a failed read, a file over the byte cap, a cancelled run) keeps the
+// task: missing information is no removal.
+func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTag, commit string, existing []store.Finding,
+	rootMarked map[string]bool, known bool) []store.Finding {
 	if !r.tasksOn() || !known {
 		return existing
 	}
@@ -131,7 +144,14 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 	for i := range out {
 		f := &out[i]
 		if f.ClosedAt != nil || !f.IsTask() || f.BitbucketCommentID == nil || f.BlockingRule == nil ||
-			marked[inference.NormalizeRule(*f.BlockingRule)] {
+			rootMarked[inference.NormalizeRule(*f.BlockingRule)] {
+			continue
+		}
+		if marked, why := r.stillMarked(ctx, key, prTag, commit, f.FilePath, inference.NormalizeRule(*f.BlockingRule)); marked || why != "" {
+			if why != "" {
+				r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: rule %q kept, %s",
+					prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, *f.BlockingRule, why))
+			}
 			continue
 		}
 		err := r.bitbucket.ResolveTask(ctx, key.Project, key.Repo, key.PRID, *f.BitbucketCommentID)
@@ -158,6 +178,35 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 	return out
 }
 
+// stillMarked reports whether an AGENTS.md below the root that covers file
+// marks text at commit. why is non-empty when that is not known for sure:
+// then the task stays, whatever marked says.
+func (r *Reviewer) stillMarked(ctx context.Context, key store.PRKey, prTag, commit, file, text string) (marked bool, why string) {
+	if commit == "" {
+		return false, "no PR head to read its AGENTS.md files at"
+	}
+	nested, left, incomplete := r.fetchNestedAgentsMD(ctx, key.Project, key.Repo, commit, prTag, []string{file})
+	switch {
+	case ctx.Err() != nil:
+		return false, "run cancelled"
+	case incomplete != "":
+		return false, "AGENTS.md files above the file not all read (" + incomplete + ")"
+	case len(left) > 0:
+		return false, left[0].Path + " left out (" + left[0].Reason + ")"
+	}
+	sources := make([]inference.RuleSource, 0, len(nested))
+	for _, n := range nested {
+		sources = append(sources, inference.RuleSource{Dir: n.Dir, Text: n.Content})
+	}
+	rules, over := inference.ExtractBlockingRulesFrom(sources)
+	for _, rule := range rules {
+		if rule.Text == text {
+			return true, ""
+		}
+	}
+	return slices.Contains(over, text), ""
+}
+
 // targetAgentsMD is the target branch's AGENTS.md, where the blocking rules
 // come from: a PR that deletes a marker must not unblock itself, and one
 // that adds a rule gets it once merged. known is false on any failure but
@@ -180,25 +229,42 @@ func (r *Reviewer) targetAgentsMD(ctx context.Context, project, repo, branch str
 	return body, true
 }
 
-// blockingRules reads the review's rules off AGENTS.md and logs them.
-// marked is every marked rule's text exactly as BlockingRule.Text holds it
-// (normalized and capped, so the stored BlockingRule of a finding matches),
-// past the cap too, for retireRemovedRules.
-func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string) (rules []inference.BlockingRule, marked map[string]bool) {
-	rules, over := inference.ExtractBlockingRules(agentsMD)
+// blockingRules reads the review's rules off the target branch's root
+// AGENTS.md and the nested ones the PR head carries (in path order), root
+// first, and logs them. A nested file's rules are read at the PR head, not
+// the target: no Bitbucket call beyond the ones the prompt made, and a PR
+// that deletes its own nested rule unblocks itself, accepted (user,
+// 2026-11-22: "das ist jetzt wirklich nicht wichtig"). rootMarked is every
+// rule text the root marks exactly as BlockingRule.Text holds it
+// (normalized and capped, so the stored BlockingRule of a finding
+// matches), past the cap too, for retireRemovedRules.
+func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string, nested []nestedAgentsMD) (rules []inference.BlockingRule, rootMarked map[string]bool) {
+	sources := []inference.RuleSource{{Text: agentsMD}}
+	for _, n := range nested {
+		sources = append(sources, inference.RuleSource{Dir: n.Dir, Text: n.Content})
+	}
+	rules, over := inference.ExtractBlockingRulesFrom(sources)
 	if len(rules) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s) in AGENTS.md", prTag, len(rules)))
+	}
+	for _, rule := range rules {
+		if rule.Dir != "" {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: blocking rule %s from %sAGENTS.md covers %s only: %q", prTag, rule.ID, rule.Dir, rule.Dir, rule.Text))
+		}
 	}
 	if len(over) > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d more [blocking] rule(s) past the cap of %d left plain guidelines",
 			prTag, len(over), inference.MaxBlockingRules))
 	}
-	marked = make(map[string]bool, len(rules)+len(over))
-	for _, rule := range rules {
-		marked[rule.Text] = true
+	// The root's alone: a nested rule's task is judged by the files above
+	// its own file (retireRemovedRules).
+	rootRules, rootOver := inference.ExtractBlockingRules(agentsMD)
+	rootMarked = make(map[string]bool, len(rootRules)+len(rootOver))
+	for _, rule := range rootRules {
+		rootMarked[rule.Text] = true
 	}
-	for _, text := range over {
-		marked[text] = true
+	for _, text := range rootOver {
+		rootMarked[text] = true
 	}
-	return rules, marked
+	return rules, rootMarked
 }
