@@ -112,6 +112,23 @@ func TestExtractBlockingRulesFrom(t *testing.T) {
 	}
 }
 
+// A child repeating its parent directory's rule takes no slot; a sibling
+// of that parent's child that marks it is still covered by the parent.
+func TestExtractBlockingRulesFromParentRepeat(t *testing.T) {
+	rules, _ := ExtractBlockingRulesFrom([]RuleSource{
+		{Dir: "services/", Text: "- [blocking] Cents.\n"},
+		{Dir: "services/pay/", Text: "- [blocking] Cents.\n- [blocking] Pay only.\n"},
+		{Dir: "web/", Text: "- [blocking] Cents.\n"},
+	})
+	var got []string
+	for _, r := range rules {
+		got = append(got, r.Dir+r.Text)
+	}
+	if want := []string{"services/Cents.", "services/pay/Pay only.", "web/Cents."}; !slices.Equal(got, want) {
+		t.Errorf("rules = %q, want %q", got, want)
+	}
+}
+
 func TestCheckBlocking(t *testing.T) {
 	rules := []BlockingRule{{ID: "B1", Text: "No SQL."}, {ID: "B2", Text: "Tenant."}, {ID: "B3", Text: "Cents.", Dir: "pay/"}}
 	conf := func(n int) *int { return &n }

@@ -193,12 +193,22 @@ func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag
 // were: never a list of paths, since most candidates hold no file. The root
 // rules still hold, and the next run may read the rest.
 func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag string, paths []string) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
+	return r.lookupNested(ctx, project, repo, commit, prTag, paths, false)
+}
+
+// lookupNested is fetchNestedAgentsMD; quiet leaves out the lines about
+// what was found, cut or left out, for a lookup that only checks a rule
+// (stillMarked): they would repeat the prompt's per task and read as if
+// the files went to the model. A failed read is logged either way.
+func (r *Reviewer) lookupNested(ctx context.Context, project, repo, commit, prTag string, paths []string, quiet bool) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
 	if commit == "" {
 		return nil, nil, ""
 	}
 	dirs, cut := nestedCandidates(paths)
 	if cut > 0 {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for an AGENTS.md (cap %d)", prTag, cut, nestedAgentsProbes))
+		if !quiet {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for an AGENTS.md (cap %d)", prTag, cut, nestedAgentsProbes))
+		}
 		incomplete = render.LookupProbeCap
 	}
 probe:
@@ -215,7 +225,9 @@ probe:
 			incomplete = render.LookupUnreadable
 			break probe
 		case p.oversize > 0:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: %sAGENTS.md left out: %d bytes, over %d", prTag, dir, p.oversize, nestedAgentsMaxBytes))
+			if !quiet {
+				r.log.WarnContext(ctx, fmt.Sprintf("%s: %sAGENTS.md left out: %d bytes, over %d", prTag, dir, p.oversize, nestedAgentsMaxBytes))
+			}
 			left = append(left, store.AgentsMDLeft{Path: dir + "AGENTS.md", Reason: render.LeftOversize})
 		case p.content != "":
 			found = append(found, nestedAgentsMD{Dir: dir, Content: p.content})
@@ -223,8 +235,10 @@ probe:
 	}
 	slices.SortFunc(found, func(a, b nestedAgentsMD) int { return strings.Compare(a.Dir, b.Dir) })
 	slices.SortFunc(left, func(a, b store.AgentsMDLeft) int { return strings.Compare(a.Path, b.Path) })
-	for _, n := range found {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: loaded %s", prTag, n.Path()))
+	if !quiet {
+		for _, n := range found {
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: loaded %s", prTag, n.Path()))
+		}
 	}
 	return found, left, incomplete
 }
