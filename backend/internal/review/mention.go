@@ -203,9 +203,8 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	// Unreadable: the answer goes on without it.
 	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch()).text
 	// The nested ones for the PR's paths, as a review reads them.
-	repoInstructions, left := withNested(repoInstructions,
-		r.fetchNestedAgentsMD(ctx, project, repo, pr.FromRef.LatestCommit, prTag, prPaths(rawDiff)),
-		r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, pr.FromRef.LatestCommit, prTag, prPaths(rawDiff))
+	repoInstructions, _, left := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
 	if len(left) > 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit: %s", prTag, strings.Join(left, ", ")))
 	}

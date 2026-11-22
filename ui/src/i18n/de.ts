@@ -467,6 +467,17 @@ export const de = {
     agentsMissing: "fehlt",
     agentsOf: "{{tokens}} von {{warn}} Tokens ({{pct}}%)",
     agentsTokens: "{{tokens}} Tokens",
+    agentsFiles: "AGENTS.md-Dateien",
+    agentsLeftOut: "AGENTS.md weggelassen",
+    agentsLeft: {
+      token_limit: "über dem Token-Limit",
+      oversize: "Datei zu gross",
+    },
+    agentsLookup: "AGENTS.md-Suche",
+    agentsIncomplete: {
+      probe_cap: "nicht jeder Ordner geprüft, zu viele in diesem PR",
+      unreadable: "abgebrochen, Bitbucket-Fehler",
+    },
     ticket: "Jira-Ticket",
     parentTicket: "Übergeordnetes Ticket",
     earlierFindings: "Frühere Findings mitgeschickt",
@@ -667,8 +678,10 @@ export const de = {
     agentsQ: "AGENTS.md",
     agentsA1:
       "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos. Wird ein Befund immer wieder mit demselben Grund bestritten (standardmässig in 3 PRs innert 30 Tagen), schlägt die Antwort im Befund-Thread die Zeile für AGENTS.md vor, die ihn künftig verhindert.",
+    agentsA2:
+      "Im Monorepo steht im Root, was überall gilt; es bleibt Pflicht und ist der einzige Ort, an dem eine [blocking]-Regel zählt. Eine AGENTS.md in einem Unterordner ergänzt Regeln für die Dateien darunter, in beliebiger Tiefe: Eine geänderte Datei bekommt jede vom Root abwärts, und wo sie sich widersprechen, gewinnt die tiefere. Wiederhole nicht, was weiter oben schon steht. Die Zusammenfassung nennt die zusätzlich angewendeten Dateien.",
     agentsA3:
-      "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit, und über dem Limit hören Reviews ganz auf.",
+      "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit und zählt dabei Root und Unterordner zusammen. Ist die Datei im Root über dem Limit, hören Reviews ganz auf; eine Datei aus einem Unterordner, die nicht mehr passt, wird weggelassen und in der Zusammenfassung genannt.",
     stopQ: "Wie verhindere ich, dass noergler einen PR prüft?",
     stopA1:
       "Schreibe <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch geprüft.",

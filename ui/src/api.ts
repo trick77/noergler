@@ -394,7 +394,21 @@ export interface RunPipeline {
     tokens: number;
   }[];
   cross_file: string[];
-  agents_md: { found: boolean; tokens: number; warn_tokens: number };
+  // found and tokens are the root file's; nested and left_out are absent
+  // on runs from before they were recorded.
+  agents_md: {
+    found: boolean;
+    tokens: number;
+    warn_tokens: number;
+    nested?: { path: string; tokens: number }[];
+    left_out?: {
+      path: string;
+      reason: "token_limit" | "oversize";
+    }[];
+    // Why the lookup below the root missed directories; absent when it
+    // probed them all.
+    incomplete?: "probe_cap" | "unreadable";
+  };
   ticket?: string;
   parent_ticket?: string;
   previously_posted: { shown: number; total: number };

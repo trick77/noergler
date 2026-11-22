@@ -290,8 +290,8 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	// The nested ones above the finding's file, the whole chain, from the
 	// same commit, for the prompts. A dispute bullet is checked against the root
 	// alone: the signal is repo-wide, a nested rule covers one directory.
-	agentsMD, left := withNested(rootMD, r.fetchNestedAgentsMD(ctx, project, repo, at, prTag, []string{f.FilePath}),
-		r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, at, prTag, []string{f.FilePath})
+	agentsMD, _, left := withNested(rootMD, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
 	if len(left) > 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit: %s", prTag, strings.Join(left, ", ")))
 	}

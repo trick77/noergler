@@ -79,7 +79,9 @@ func agentsMDMissingSummaryEN() string {
 		"so the review was not run.\n\n" +
 		"**What to do**\n" +
 		"- Add an `AGENTS.md` file to the repository root describing project " +
-		"conventions, forbidden patterns, and areas the reviewer should focus on.\n" +
+		"conventions, forbidden patterns, and areas the reviewer should focus on. " +
+		"An `AGENTS.md` in a subdirectory adds rules for that part of the repo; " +
+		"it does not replace the root one.\n" +
 		"- Push the file to the PR branch (or merge it into the target branch) and " +
 		"the next webhook event on this PR will trigger a full review.\n"
 }

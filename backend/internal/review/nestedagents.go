@@ -12,6 +12,8 @@ import (
 
 	"github.com/trick77/noergler/internal/bitbucket"
 	"github.com/trick77/noergler/internal/diff"
+	"github.com/trick77/noergler/internal/render"
+	"github.com/trick77/noergler/internal/store"
 )
 
 // An AGENTS.md below the root holds the rules of one part of a monorepo.
@@ -183,23 +185,26 @@ func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag
 // an ancestor directory of a changed file, so a file gets the whole chain
 // from the root down (user, 2026-11-22), the deeper one winning where they
 // differ (nestedBlock says so). In path order, a parent before its
-// children. A missing file is absent; a read that fails otherwise ends the
-// lookup, logged once: Bitbucket failing is rarely one file's fault, and
-// each further probe would hold the shared worker. The root rules still
-// hold, and the next run may read it.
-func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag string, paths []string) []nestedAgentsMD {
+// children. A missing file is absent; one over the byte cap is in left,
+// logged. A read that fails otherwise ends the lookup, logged once:
+// Bitbucket failing is rarely one file's fault, and each further probe
+// would hold the shared worker. incomplete says why not every candidate was
+// probed (render.LookupUnreadable over render.LookupProbeCap), "" when all
+// were: never a list of paths, since most candidates hold no file. The root
+// rules still hold, and the next run may read the rest.
+func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag string, paths []string) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
 	if commit == "" {
-		return nil
+		return nil, nil, ""
 	}
 	dirs, cut := nestedCandidates(paths)
 	if cut > 0 {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for an AGENTS.md (cap %d)", prTag, cut, nestedAgentsProbes))
+		incomplete = render.LookupProbeCap
 	}
-	var found []nestedAgentsMD
 probe:
 	for i, dir := range dirs {
 		if ctx.Err() != nil {
-			return nil
+			return nil, nil, ""
 		}
 		p, ok := r.probeNested(ctx, project, repo, commit, prTag, dir)
 		switch {
@@ -207,14 +212,17 @@ probe:
 			if rest := len(dirs) - i - 1; rest > 0 {
 				r.log.WarnContext(ctx, fmt.Sprintf("%s: nested AGENTS.md lookup stopped, %d director(ies) not probed", prTag, rest))
 			}
+			incomplete = render.LookupUnreadable
 			break probe
 		case p.oversize > 0:
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: %sAGENTS.md left out: %d bytes, over %d", prTag, dir, p.oversize, nestedAgentsMaxBytes))
+			left = append(left, store.AgentsMDLeft{Path: dir + "AGENTS.md", Reason: render.LeftOversize})
 		case p.content != "":
 			found = append(found, nestedAgentsMD{Dir: dir, Content: p.content})
 		}
 	}
 	slices.SortFunc(found, func(a, b nestedAgentsMD) int { return strings.Compare(a.Dir, b.Dir) })
+	slices.SortFunc(left, func(a, b store.AgentsMDLeft) int { return strings.Compare(a.Path, b.Path) })
 	for _, n := range found {
 		r.log.InfoContext(ctx, fmt.Sprintf("%s: loaded %s", prTag, n.Path()))
 		if strings.Contains(strings.ToLower(n.Content), "[blocking]") {
@@ -223,7 +231,7 @@ probe:
 			r.log.InfoContext(ctx, fmt.Sprintf("%s: [blocking] lines in %s are ignored: only the root AGENTS.md of the target branch blocks", prTag, n.Path()))
 		}
 	}
-	return found
+	return found, left, incomplete
 }
 
 // nestedBlock is one nested file as the prompt carries it. The heading
@@ -239,8 +247,9 @@ func nestedBlock(n nestedAgentsMD) string {
 // the whole over the token limit is left out, in path order, and named in
 // dropped: the root decides whether a review runs, never a nested file.
 // With the limit off (<= 0) the root is not counted and the nested files
-// alone stay under nestedUnlimitedTokens. Each part is counted once.
-func withNested(root string, nested []nestedAgentsMD, maxTokens int, count func(string) int) (combined string, dropped []string) {
+// alone stay under nestedUnlimitedTokens. kept are the carried ones with
+// their tokens, for the footer and the run page. Each part is counted once.
+func withNested(root string, nested []nestedAgentsMD, maxTokens int, count func(string) int) (combined string, kept []store.AgentsMDFile, dropped []string) {
 	var parts []string
 	total, limit := 0, maxTokens
 	if limit <= 0 {
@@ -261,8 +270,38 @@ func withNested(root string, nested []nestedAgentsMD, maxTokens int, count func(
 		}
 		total += c
 		parts = append(parts, block)
+		kept = append(kept, store.AgentsMDFile{Path: n.Path(), Tokens: c})
 	}
-	return strings.Join(parts, "\n\n"), dropped
+	return strings.Join(parts, "\n\n"), kept, dropped
+}
+
+// leftOver is the nested files left out over the token limit, as
+// store.AgentsMDLeft, after the ones fetchNestedAgentsMD left out; path
+// order across both.
+func leftOver(left []store.AgentsMDLeft, dropped []string) []store.AgentsMDLeft {
+	out := slices.Clone(left)
+	for _, p := range dropped {
+		out = append(out, store.AgentsMDLeft{Path: p, Reason: render.LeftTokenLimit})
+	}
+	slices.SortStableFunc(out, func(a, b store.AgentsMDLeft) int { return strings.Compare(a.Path, b.Path) })
+	return out
+}
+
+// renderNested and renderLeft hand the run's nested facts to the footer.
+func renderNested(files []store.AgentsMDFile) []render.AgentsMDFile {
+	out := make([]render.AgentsMDFile, len(files))
+	for i, f := range files {
+		out[i] = render.AgentsMDFile{Path: f.Path, Tokens: f.Tokens}
+	}
+	return out
+}
+
+func renderLeft(left []store.AgentsMDLeft) []render.AgentsMDLeft {
+	out := make([]render.AgentsMDLeft, len(left))
+	for i, l := range left {
+		out[i] = render.AgentsMDLeft{Path: l.Path, Reason: l.Reason}
+	}
+	return out
 }
 
 // rootTokens is the root AGENTS.md's token count for the footer: the

@@ -70,9 +70,14 @@ type SummaryInput struct {
 	Focus []inference.FocusItem
 
 	AgentsMDFound bool
-	// AgentsMDLeftOut are the AGENTS.md files below the root that applied
-	// to the PR but were left out over the token limit.
-	AgentsMDLeftOut []string
+	// AgentsMDNested are the AGENTS.md files below the root the prompt
+	// carried, in path order, with their tokens; AgentsMDLeftOut the ones
+	// that applied to the PR but were left out, and why.
+	AgentsMDNested  []AgentsMDFile
+	AgentsMDLeftOut []AgentsMDLeft
+	// AgentsMDIncomplete is why the nested lookup did not probe every
+	// candidate directory (LookupProbeCap, LookupUnreadable), "" when it did.
+	AgentsMDIncomplete string
 	// SkippedFiles were too large for the size gate; OverBudgetFiles were
 	// left out of the prompt because the PR is over the model's token budget
 	// (named to the model only), whatever their own size. Both are not
@@ -708,9 +713,36 @@ func renderFootnote(in SummaryInput) string {
 	} else if line := agentsMDBloatLine(in); line != "" {
 		warn = append(warn, line)
 	}
-	if len(in.AgentsMDLeftOut) > 0 {
-		warn = append(warn, p("Nicht berücksichtigt (über dem AGENTS.md-Token-Limit): ",
-			"Not used (over the AGENTS.md token limit): ")+codeList(in.AgentsMDLeftOut)+" ⚠️")
+	// The nested files that applied: a monorepo's author learns which
+	// rules this review held the PR to (user, 2026-11-22). None, no line:
+	// the root file alone is true of every reviewed PR.
+	if len(in.AgentsMDNested) > 0 {
+		paths := make([]string, len(in.AgentsMDNested))
+		for i, f := range in.AgentsMDNested {
+			paths[i] = f.Path
+		}
+		warn = append(warn, p("Zusätzlich angewendet: ", "Also applied: ")+codeList(paths)+" ℹ️")
+	}
+	for _, reason := range []string{LeftTokenLimit, LeftOversize} {
+		var paths []string
+		for _, l := range in.AgentsMDLeftOut {
+			if l.Reason == reason {
+				paths = append(paths, l.Path)
+			}
+		}
+		if len(paths) > 0 {
+			warn = append(warn, leftOutLabel(in.Lang, reason)+codeList(paths)+" ⚠️")
+		}
+	}
+	// A lookup cut short is one line, never the paths it missed: most
+	// candidate directories hold no file at all.
+	switch in.AgentsMDIncomplete {
+	case LookupUnreadable:
+		warn = append(warn, p("Suche nach AGENTS.md in Unterordnern abgebrochen (Bitbucket-Fehler) ⚠️",
+			"Lookup of AGENTS.md below the root stopped (Bitbucket error) ⚠️"))
+	case LookupProbeCap:
+		warn = append(warn, p("Nicht jeder Ordner auf eine AGENTS.md geprüft (zu viele Ordner im PR) ⚠️",
+			"Not every directory checked for an AGENTS.md (too many in this PR) ⚠️"))
 	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
@@ -815,18 +847,75 @@ func Elapsed(seconds float64) string {
 	return fmt.Sprintf("%dm %ds", total/60, total%60)
 }
 
-// agentsMDBloatLine warns when AGENTS.md is over the soft threshold, and is
-// empty otherwise: "AGENTS.md was used" is true of every reviewed PR and
-// moved to the run page.
+// AgentsMDFile is one nested AGENTS.md the prompt carried.
+type AgentsMDFile struct {
+	Path   string
+	Tokens int
+}
+
+// AgentsMDLeft is one nested AGENTS.md that applied but was left out.
+type AgentsMDLeft struct {
+	Path   string
+	Reason string
+}
+
+// Why a nested AGENTS.md was left out (store.AgentsMDLeft's values).
+const (
+	LeftTokenLimit = "token_limit"
+	LeftOversize   = "oversize"
+)
+
+// Why the nested lookup did not probe every candidate directory
+// (store.AgentsMDFacts.Incomplete's values).
+const (
+	LookupProbeCap   = "probe_cap"
+	LookupUnreadable = "unreadable"
+)
+
+func leftOutLabel(l lang.Lang, reason string) string {
+	if reason == LeftOversize {
+		return l.Pick("Nicht berücksichtigt (Datei zu gross): ", "Not used (file too large): ")
+	}
+	return l.Pick("Nicht berücksichtigt (über dem AGENTS.md-Token-Limit): ",
+		"Not used (over the AGENTS.md token limit): ")
+}
+
+// bloatNamed is how many files the bloat line names, largest first.
+const bloatNamed = 3
+
+// agentsMDBloatLine warns when what the prompt carries of AGENTS.md, the
+// root and every nested file together, is over the soft threshold (user,
+// 2026-11-22), and is empty otherwise: "AGENTS.md was used" is true of
+// every reviewed PR and moved to the run page. With nested files it names
+// the largest, so the author knows which one to trim.
 func agentsMDBloatLine(in SummaryInput) string {
 	p := in.Lang.Pick
 	tokens := in.AgentsMDTokens
+	for _, f := range in.AgentsMDNested {
+		tokens += f.Tokens
+	}
 	if in.AgentsMDWarnTokens <= 0 || tokens <= in.AgentsMDWarnTokens {
 		return ""
 	}
-	return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
-		"`AGENTS.md` takes ~%d of %d tokens (%d%%) — risk of context bloat, consider trimming ⚠️"),
-		tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens))
+	if len(in.AgentsMDNested) == 0 {
+		return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
+			"`AGENTS.md` takes ~%d of %d tokens (%d%%) — risk of context bloat, consider trimming ⚠️"),
+			tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens))
+	}
+	// A root not read (0 tokens) is nothing to trim: not named.
+	var files []AgentsMDFile
+	if in.AgentsMDTokens > 0 {
+		files = append(files, AgentsMDFile{Path: "AGENTS.md", Tokens: in.AgentsMDTokens})
+	}
+	files = append(files, in.AgentsMDNested...)
+	slices.SortStableFunc(files, func(a, b AgentsMDFile) int { return b.Tokens - a.Tokens })
+	var named []string
+	for _, f := range files[:min(len(files), bloatNamed)] {
+		named = append(named, fmt.Sprintf("`%s` ~%d", f.Path, f.Tokens))
+	}
+	return fmt.Sprintf(p("`AGENTS.md`-Dateien belegen zusammen ~%d von %d Tokens (%d%%), am meisten: %s — droht den Kontext aufzublähen, besser kürzen ⚠️",
+		"`AGENTS.md` files take ~%d of %d tokens together (%d%%), largest: %s — risk of context bloat, consider trimming ⚠️"),
+		tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens), strings.Join(named, ", "))
 }
 
 func diffParts(added, removed int) string {

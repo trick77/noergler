@@ -265,8 +265,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		}
 	}
 	rootInstructions := repoInstructions
-	nested := r.fetchNestedAgentsMD(ctx, project, repo, sourceCommit, prTag, paths)
-	repoInstructions, nestedDropped := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	nested, nestedLeft, nestedIncomplete := r.fetchNestedAgentsMD(ctx, project, repo, sourceCommit, prTag, paths)
+	repoInstructions, nestedKept, nestedDropped := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	nestedLeft = leftOver(nestedLeft, nestedDropped)
 	if len(nestedDropped) > 0 {
 		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit of %d tokens: %s",
 			prTag, r.cfg.AgentsMDMaxTokens, strings.Join(nestedDropped, ", ")))
@@ -419,10 +420,12 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		Prompt:    promptPartsOf(assembled, budget),
 		Files:     filesSent(prep, files, deletedPaths, renamedPaths, otherModified, fileTokens),
 		CrossFile: []string{},
-		// The root file's facts: the footer's tip and bloat line are about
-		// the root AGENTS.md, which nested files neither replace nor bloat.
+		// Found and Tokens are the root file's: the footer's tip is about
+		// the root AGENTS.md, which nested files never replace. The bloat
+		// line adds the nested ones' tokens to it.
 		AgentsMD: store.AgentsMDFacts{Found: rootInstructions != "", Tokens: rootTokens(rootInstructions, repoInstructions,
-			assembled.Breakdown.RepoInstructions, r.tokens.Count), WarnTokens: r.cfg.AgentsMDWarnTokens},
+			assembled.Breakdown.RepoInstructions, r.tokens.Count), WarnTokens: r.cfg.AgentsMDWarnTokens,
+			Nested: nestedKept, LeftOut: nestedLeft, Incomplete: nestedIncomplete},
 		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
 		Decisions:        []store.FindingDecision{},
 		Moved:            []store.MovedFinding{},
@@ -510,7 +513,6 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		// One that could not be read is no reason for the "add an
 		// AGENTS.md" tip: it may well exist.
 		agentsMDFound: rootInstructions != "" || md.unknown || md.oversize > 0,
-		agentsMDLeft:  nestedDropped,
 		totalFiles:    totalFiles,
 		diffAdded:     diffAdded,
 		diffRemoved:   diffRemoved,
@@ -739,7 +741,9 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		Summary:                    reviewSummary,
 		Focus:                      focus,
 		AgentsMDFound:              plan.agentsMDFound,
-		AgentsMDLeftOut:            plan.agentsMDLeft,
+		AgentsMDNested:             renderNested(plan.detail.AgentsMD.Nested),
+		AgentsMDLeftOut:            renderLeft(plan.detail.AgentsMD.LeftOut),
+		AgentsMDIncomplete:         plan.detail.AgentsMD.Incomplete,
 		SkippedFiles:               plan.oversized,
 		OverBudgetFiles:            plan.overBudget,
 		ContentSkippedFiles:        plan.contentSkipped,

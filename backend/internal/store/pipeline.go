@@ -81,9 +81,33 @@ type FileSent struct {
 
 // AgentsMDFacts is the repo's AGENTS.md as the prompt carried it.
 type AgentsMDFacts struct {
+	// Found and Tokens are the root file's.
 	Found      bool `json:"found"`
 	Tokens     int  `json:"tokens"`
 	WarnTokens int  `json:"warn_tokens"`
+	// Nested are the files below the root the prompt carried, in path
+	// order; LeftOut the ones that applied but were not carried, and why.
+	// Absent on runs from before they were recorded.
+	Nested  []AgentsMDFile `json:"nested,omitempty"`
+	LeftOut []AgentsMDLeft `json:"left_out,omitempty"`
+	// Incomplete is why the lookup did not probe every candidate
+	// directory: "probe_cap" or "unreadable" (a failed read ended it);
+	// empty when it did.
+	Incomplete string `json:"incomplete,omitempty"`
+}
+
+// AgentsMDFile is one nested AGENTS.md the prompt carried, with what it
+// cost (its heading included).
+type AgentsMDFile struct {
+	Path   string `json:"path"`
+	Tokens int    `json:"tokens"`
+}
+
+// AgentsMDLeft is one nested AGENTS.md that applied but was not carried.
+// Reason is "token_limit" or "oversize".
+type AgentsMDLeft struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 // PreviouslyPosted is how many earlier findings the prompt showed, of all.

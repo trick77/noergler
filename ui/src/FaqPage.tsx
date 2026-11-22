@@ -95,6 +95,7 @@ export function FaqPage() {
 
         <Q q={t("faq.agentsQ")}>
           <p>{t("faq.agentsA1")}</p>
+          <p>{t("faq.agentsA2")}</p>
           <p>{t("faq.agentsA3")}</p>
         </Q>
 

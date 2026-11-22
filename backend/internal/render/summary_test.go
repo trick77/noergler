@@ -620,17 +620,97 @@ func TestSummaryVisualChangesFoldIdenticalLines(t *testing.T) {
 	}
 }
 
-// A nested AGENTS.md left out over the token limit is named in full: every
-// one has the same base name.
+// A nested AGENTS.md left out is named in full (every one has the same
+// base name), on one line per reason.
 func TestSummaryNamesAgentsMDLeftOut(t *testing.T) {
 	in := base()
 	in.AgentsMDFound = true
-	in.AgentsMDLeftOut = []string{"services/pay/AGENTS.md"}
-	if got := Summary(in); !strings.Contains(got, "Not used (over the AGENTS.md token limit): `services/pay/AGENTS.md`") {
-		t.Errorf("footer must name the file left out:\n%s", got)
+	in.AgentsMDLeftOut = []AgentsMDLeft{
+		{Path: "services/pay/AGENTS.md", Reason: LeftTokenLimit},
+		{Path: "web/AGENTS.md", Reason: LeftOversize},
+		{Path: "tools/AGENTS.md", Reason: LeftTokenLimit},
+	}
+	got := Summary(in)
+	for _, want := range []string{
+		"Not used (over the AGENTS.md token limit): `services/pay/AGENTS.md`, `tools/AGENTS.md` ⚠️",
+		"Not used (file too large): `web/AGENTS.md` ⚠️",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("footer must carry %q:\n%s", want, got)
+		}
 	}
 	in.AgentsMDLeftOut = nil
-	if got := Summary(in); strings.Contains(got, "Not used (over") {
+	if got := Summary(in); strings.Contains(got, "Not used (") {
 		t.Errorf("nothing left out, no line:\n%s", got)
+	}
+}
+
+// The nested files the prompt carried are named; with none, no line (the
+// root file alone is every PR's).
+func TestSummaryNamesAgentsMDApplied(t *testing.T) {
+	in := base()
+	in.AgentsMDFound = true
+	in.AgentsMDNested = []AgentsMDFile{{Path: "services/AGENTS.md", Tokens: 10}, {Path: "services/pay/AGENTS.md", Tokens: 20}}
+	if got := Summary(in); !strings.Contains(got, "Also applied: `services/AGENTS.md`, `services/pay/AGENTS.md` ℹ️") {
+		t.Errorf("footer must name the applied files:\n%s", got)
+	}
+	in.Lang = lang.DE
+	if got := Summary(in); !strings.Contains(got, "Zusätzlich angewendet: `services/AGENTS.md`") {
+		t.Errorf("German:\n%s", got)
+	}
+	in.AgentsMDNested = nil
+	if got := Summary(in); strings.Contains(got, "angewendet") {
+		t.Errorf("root only, no line:\n%s", got)
+	}
+}
+
+// The bloat warning measures the root and the nested files together and
+// names the largest; the root alone keeps its own wording.
+func TestSummaryBloatCountsNested(t *testing.T) {
+	in := base()
+	in.AgentsMDFound = true
+	in.AgentsMDWarnTokens = 4000
+	in.AgentsMDTokens = 1000
+	in.AgentsMDNested = []AgentsMDFile{
+		{Path: "a/AGENTS.md", Tokens: 500}, {Path: "b/AGENTS.md", Tokens: 2000},
+		{Path: "c/AGENTS.md", Tokens: 600}, {Path: "d/AGENTS.md", Tokens: 100},
+	}
+	want := "`AGENTS.md` files take ~4200 of 4000 tokens together (105%), largest: `b/AGENTS.md` ~2000, `AGENTS.md` ~1000, `c/AGENTS.md` ~600"
+	if got := Summary(in); !strings.Contains(got, want) {
+		t.Errorf("want %q:\n%s", want, got)
+	}
+	in.AgentsMDNested = in.AgentsMDNested[:1]
+	if got := Summary(in); strings.Contains(got, "context bloat") {
+		t.Errorf("1500 of 4000, no warning:\n%s", got)
+	}
+	in.AgentsMDNested = nil
+	in.AgentsMDTokens = 5000
+	if got := Summary(in); !strings.Contains(got, "`AGENTS.md` takes ~5000 of 4000 tokens (125%)") {
+		t.Errorf("root only keeps its wording:\n%s", got)
+	}
+	// A root that was not read (0 tokens) is never named as one to trim.
+	in.AgentsMDTokens = 0
+	in.AgentsMDNested = []AgentsMDFile{{Path: "a/AGENTS.md", Tokens: 3000}, {Path: "b/AGENTS.md", Tokens: 1500}}
+	if got := Summary(in); strings.Contains(got, "`AGENTS.md` ~0") || !strings.Contains(got, "largest: `a/AGENTS.md` ~3000, `b/AGENTS.md` ~1500 —") {
+		t.Errorf("unread root named:\n%s", got)
+	}
+}
+
+// A nested lookup cut short is one line, never a list of paths.
+func TestSummarySaysNestedLookupIncomplete(t *testing.T) {
+	in := base()
+	in.AgentsMDFound = true
+	for code, want := range map[string]string{
+		LookupUnreadable: "Lookup of AGENTS.md below the root stopped (Bitbucket error) ⚠️",
+		LookupProbeCap:   "Not every directory checked for an AGENTS.md (too many in this PR) ⚠️",
+	} {
+		in.AgentsMDIncomplete = code
+		if got := Summary(in); !strings.Contains(got, want) {
+			t.Errorf("%s: want %q:\n%s", code, want, got)
+		}
+	}
+	in.AgentsMDIncomplete = ""
+	if got := Summary(in); strings.Contains(got, "Lookup of") || strings.Contains(got, "Not every directory") {
+		t.Errorf("complete lookup, no line:\n%s", got)
 	}
 }

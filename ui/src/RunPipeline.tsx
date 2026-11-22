@@ -107,23 +107,73 @@ export function StageTimeline({ p }: { p: RunPipeline }) {
 export function ContextCard({ p }: { p: RunPipeline }) {
   const { t } = useTranslation();
   const a = p.agents_md;
+  // Old runs carry neither list: the root row reads as it always did.
+  const nested = a.nested ?? [];
+  const left = a.left_out ?? [];
+  // What the prompt carried, root and nested together: the figure the
+  // footer's size warning measures.
+  const tokens = a.tokens + nested.reduce((sum, f) => sum + f.tokens, 0);
+  const files = [
+    ...(a.found ? [{ path: "AGENTS.md", tokens: a.tokens }] : []),
+    ...nested,
+  ];
   return (
     <Card title={t("run.contextTitle")}>
       <dl className="grid grid-cols-1 gap-x-7 sm:grid-cols-2">
         <KV
           k={t("promptPart.repo_instructions")}
           v={
-            !a.found
+            !a.found && nested.length === 0
               ? t("run.agentsMissing")
               : a.warn_tokens > 0
                 ? t("run.agentsOf", {
-                    tokens: num(a.tokens),
+                    tokens: num(tokens),
                     warn: num(a.warn_tokens),
-                    pct: Math.round((a.tokens / a.warn_tokens) * 100),
+                    pct: Math.round((tokens / a.warn_tokens) * 100),
                   })
-                : t("run.agentsTokens", { tokens: num(a.tokens) })
+                : t("run.agentsTokens", { tokens: num(tokens) })
           }
         />
+        {nested.length > 0 && (
+          <KV
+            k={t("run.agentsFiles")}
+            v={
+              <ul>
+                {files.map((f) => (
+                  <li key={f.path}>
+                    <span className="font-mono text-[12.5px]">{f.path}</span> ·{" "}
+                    {t("run.agentsTokens", { tokens: num(f.tokens) })}
+                  </li>
+                ))}
+              </ul>
+            }
+          />
+        )}
+        {left.length > 0 && (
+          <KV
+            k={t("run.agentsLeftOut")}
+            v={
+              <ul>
+                {left.map((l) => (
+                  <li key={l.path}>
+                    <span className="font-mono text-[12.5px]">{l.path}</span> ·{" "}
+                    {t(`run.agentsLeft.${l.reason}`, {
+                      defaultValue: l.reason,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            }
+          />
+        )}
+        {a.incomplete && (
+          <KV
+            k={t("run.agentsLookup")}
+            v={t(`run.agentsIncomplete.${a.incomplete}`, {
+              defaultValue: a.incomplete,
+            })}
+          />
+        )}
         <KV k={t("run.ticket")} mono v={p.ticket || "—"} />
         {p.parent_ticket && (
           <KV k={t("run.parentTicket")} mono v={p.parent_ticket} />

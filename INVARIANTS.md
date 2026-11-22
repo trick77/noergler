@@ -268,7 +268,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   kept only by the token limit; limit off (0) still caps nested alone at
   7000 (a wide PR overflowed the context otherwise). Memo key is the commit, never a
   TTL or the last reviewed commit (a file added in an unseen commit is a new
-  head anyway); a failed read is never remembered.
+  head anyway); a failed read is never remembered. Footer names the nested
+  files applied (user, 2026-11-22: the one "was used" line allowed, root-only
+  PRs get none) and the size warning counts root + nested. A lookup cut
+  short (cap, failed read) is one footer line, never paths: most probed
+  dirs hold no file, a path list named ones that do not exist.
 - Blocking rules (user, 2026-11-15): code decides which rules block
   (`[blocking]` line prefix in the TARGET branch's AGENTS.md, never the
   PR's: the gated branch must not lift its gate; `ExtractBlockingRules`,

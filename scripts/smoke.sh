@@ -197,7 +197,7 @@ if [ -z "$serve_failed" ] && [ "$serve_rc" -ne 0 ]; then
   serve_failed="serve exited $serve_rc after SIGTERM"
 fi
 echo "--- log"
-grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions|screenshot|resumed" "$tmp/serve.log"
+grep -E "version|Database|Bitbucket:|Jira:|team_disabled|team_ready|teams_ready|http_request|stopped|listening|DISABLED|queue\[|priced by the gateway|HTTP totals|cost headers|Review of |context_window |context window |PR description |calls, tools|A reply on|noergler threads open|team credential|credentials push|comment mentions|screenshot|resumed|AGENTS.md" "$tmp/serve.log"
 echo "--- review posted"
 grep -c "comment posted" "$tmp/fakes.log" || true
 echo "--- onboarding writes seen by bitbucket (want a create, a grant and a refusal)"

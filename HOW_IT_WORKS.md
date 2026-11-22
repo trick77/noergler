@@ -100,10 +100,14 @@ remembered). Every file found, none over 32 KiB, applies: a changed file
 gets the whole chain from the root down, the deeper file winning where they
 differ. They follow the root rules in path order, a parent before its
 children, each under a heading naming its directory. One that would take the whole over
-the hard token limit is left out and the footer names it (with the limit
-off, the nested files alone stay under 7,000 tokens); a nested file never
-skips a review. The footer's tip and size warning are about the root
-file alone. Every file cut or not read is logged. `[blocking]` lines in a
+the hard token limit is left out (with the limit off, the nested files
+alone stay under 7,000 tokens); a nested file never skips a review. The
+footer names the nested files applied, the ones left out by reason (token
+limit, over 32 KiB), and a lookup cut short (probe cap, or a failed read:
+no path list, most candidates hold no file); the run page shows the same,
+with tokens. The size warning counts the root and the nested files
+together and names the largest; the tip is about the root file alone.
+Every file cut or not read is logged. `[blocking]` lines in a
 nested file block nothing (logged): blocking rules are the target branch's
 root file only. The Q&A reads the same for the PR's paths, a finding reply
 for the finding's file; a dispute bullet is checked against the root alone.
@@ -440,7 +444,8 @@ review's push sentence is not shown. Its sections, in order:
    The model's prose elsewhere in the summary and in inline comments spans
    the same labels in place
 10. A footer: a bullet for each thing the author can act on (no AGENTS.md or
-   one over its warn size, no ticket while Jira is on, Jira unavailable so
+   AGENTS.md files over their warn size together, nested ones applied or
+   left out, no ticket while Jira is on, Jira unavailable so
    the ticket check was skipped or the parent went unchecked, files not reviewed or
    reviewed without full context), then one line of model, files, lines,
    elapsed time and cost, ending in a link to the PR's page when

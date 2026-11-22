@@ -481,6 +481,17 @@ export const en = {
     agentsMissing: "missing",
     agentsOf: "{{tokens}} of {{warn}} tokens ({{pct}}%)",
     agentsTokens: "{{tokens}} tokens",
+    agentsFiles: "AGENTS.md files",
+    agentsLeftOut: "AGENTS.md left out",
+    agentsLeft: {
+      token_limit: "over the token limit",
+      oversize: "file too large",
+    },
+    agentsLookup: "AGENTS.md lookup",
+    agentsIncomplete: {
+      probe_cap: "not every directory checked, too many in this PR",
+      unreadable: "stopped, Bitbucket error",
+    },
     ticket: "Jira ticket",
     parentTicket: "Parent ticket",
     earlierFindings: "Earlier findings sent",
@@ -680,8 +691,10 @@ export const en = {
     agentsQ: "AGENTS.md",
     agentsA1:
       "It is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root. When findings keep being disputed for the same reason (by default in 3 PRs within 30 days), the reply in the finding thread proposes the AGENTS.md line that stops them.",
+    agentsA2:
+      "In a monorepo, the root file holds what applies everywhere; it stays required, and it is the only place a [blocking] rule counts. An AGENTS.md in a subdirectory adds rules for the files below it, at any depth: a changed file gets every one from the root down, and the deeper one wins where they differ. Do not repeat what a parent already says. The summary names the extra files it applied.",
     agentsA3:
-      "Keep it short. The summary starts warning well before the size limit, and past the limit reviews stop entirely.",
+      "Keep it short. The summary starts warning well before the size limit, counting the root and subdirectory files together. A root file past the limit stops reviews entirely; a subdirectory file that no longer fits is left out and the summary names it.",
     stopQ: "How do I stop noergler reviewing a PR?",
     stopA1:
       "Put <code>noergloff</code> anywhere in the source branch name: <code>feature/noergloff-spike</code> is never auto-reviewed.",

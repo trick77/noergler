@@ -227,6 +227,13 @@ func main() {
 				_, _ = w.Write([]byte("# Rules\n\nBe terse.\n"))
 				return
 			}
+			// A nested one above the screenshot: the review carries it after
+			// the root's, and the summary and run page name it.
+			if path == "e2e/AGENTS.md" {
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = w.Write([]byte("# E2E\n\nSnapshots are regenerated, never edited.\n"))
+				return
+			}
 			if body, ok := sampleFiles[path]; ok {
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = w.Write([]byte(body))

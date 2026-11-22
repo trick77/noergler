@@ -286,6 +286,9 @@ describe("RunPane", () => {
     expect(screen.getByText("1m 3s")).toBeDefined();
     expect(screen.getByText("PAY-2291")).toBeDefined();
     expect(screen.getByText("1'240 of 4'000 tokens (31%)")).toBeDefined();
+    // An old run carries no nested lists: no rows for them.
+    expect(screen.queryByText("AGENTS.md files")).toBeNull();
+    expect(screen.queryByText("AGENTS.md left out")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
     expect(screen.getByText("MaxRetries can go negative")).toBeDefined();
@@ -314,6 +317,39 @@ describe("RunPane", () => {
     expect(
       screen.getByText("go.sum").closest("td")?.getAttribute("title"),
     ).toBe("services/payments/go.sum");
+  });
+
+  // The nested AGENTS.md files the prompt carried, with their tokens, and
+  // the ones left out with why; the size row counts them all.
+  it("lists the nested AGENTS.md files", async () => {
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        agents_md: {
+          found: true,
+          tokens: 1240,
+          warn_tokens: 4000,
+          nested: [{ path: "services/pay/AGENTS.md", tokens: 760 }],
+          left_out: [{ path: "web/AGENTS.md", reason: "oversize" }],
+          incomplete: "unreadable",
+        },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(
+      await screen.findByText("2'000 of 4'000 tokens (50%)"),
+    ).toBeDefined();
+    expect(screen.getByText("AGENTS.md files")).toBeDefined();
+    expect(screen.getByText("services/pay/AGENTS.md")).toBeDefined();
+    expect(screen.getByText("AGENTS.md left out")).toBeDefined();
+    expect(
+      screen.getByText("web/AGENTS.md").parentElement?.textContent,
+    ).toContain("file too large");
+    // A lookup cut short is one row, never a list of paths.
+    expect(screen.getByText("AGENTS.md lookup")).toBeDefined();
+    expect(screen.getByText("stopped, Bitbucket error")).toBeDefined();
   });
 
   // The summary shows only proven requirements; this card is the one place a

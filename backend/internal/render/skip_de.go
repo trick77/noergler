@@ -43,7 +43,9 @@ func AgentsMDMissingSummary(l lang.Lang) string {
 		"deshalb wurde das Review nicht ausgeführt.\n\n" +
 		"**Was tun**\n" +
 		"- Eine `AGENTS.md` im Repo-Root anlegen, die Projektkonventionen, " +
-		"verbotene Muster und Schwerpunkte für das Review beschreibt.\n" +
+		"verbotene Muster und Schwerpunkte für das Review beschreibt. " +
+		"Eine `AGENTS.md` in einem Unterordner ergänzt Regeln für diesen Teil des Repos; " +
+		"die im Root ersetzt sie nicht.\n" +
 		"- Die Datei auf den PR-Branch pushen (oder in den Ziel-Branch mergen); " +
 		"das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
 }
