@@ -114,6 +114,8 @@ several reviews. Those live in `sampled/` and are never rows here.
 | 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run10, the two reference cases only: not a row of the series.** Caught, control clean. |
 | 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run11, the same.** Caught, control clean. |
 | 2026-11-20 | mimo-v2.6-pro | high | 2 of 40 rev16 (`-cases`) | 1 | 1 | 0 | as run8 | **run12, the same.** Caught 5 of 5 over run8 to run12, the control clean 5 of 5. |
+| 2026-11-23 | mimo-v2.6-pro | high | 58 rev17 draft | 35 | 32 | 0 | `prompts/review.txt` @ 4c69f83 | **run1: 14 bait controls and 4 edge cases, three baits withdrawn since; run2 is the rev17 baseline.** Exit 1, complete, no redraw. Misses `edge-early-return-skips-check` (a twin, also missed in 2 of 5 sampled runs), `nil-deref` and `ts-seeded`, all with no finding at all. No Extra, and every control clean, the 14 baits included: luck on two of the withdrawn ones, which fire at 0.6 findings a sample each (`sampled/`). An earlier run on the first version of four cases (33 of 35, one finding on `bait-invariant-assertion`) is not kept: it was overwritten. $0.079, 59 calls. |
+| 2026-11-23 | mimo-v2.6-pro | high | 56 rev17 draft | 35 | 34 | 2 | `prompts/review.txt` @ 4c69f83 | **run2, the rev17 baseline: rev17 plus `bait-shortcut-field-guard`, withdrawn since (a case scores alone, so without it: 55 cases, 34 of 35, 1 Extra).** Exit 1, complete, no redraw. The miss is `lock-not-released`, no finding at all. Both Extras are on controls: the withdrawn bait (inputs in a shadow root) and `clean-blocking-sql-in-service`, unchanged since rev11 (JPA state outside the shown code). All four `edge-*` cases caught. $0.063, 57 calls. |
 
 ## What the columns mean
 
@@ -178,7 +180,18 @@ several reviews. Those live in `sampled/` and are never rows here.
   files the PR does not change, as the code search returns them, rendered
   and indexed as production does), taking it to 40 with 31 seeded. The
   seeded bug is visible only through that block: a caller still passing
-  seconds after the PR moved the unit to milliseconds. Sampled runs score findings only. Bump the number when a
+  seconds after the PR moved the unit to milliseconds. `rev17` adds 11
+  bait controls (`bait-*`) and 4 seeded edge cases (`edge-*`), taking it to 55
+  with 35 seeded (`rev17 draft` rows still held up to three more baits,
+  withdrawn before the revision landed). A bait is a correct diff with one temptation of the kind teams
+  complained about (2026-11-23): a failure built on something no shown code
+  proves (a second actor, a server reply, a viewport, a business rule, a
+  layout), a deliberate restriction or tuning value read as a defect, or a
+  finding outside the remit. Four rebuild the complained-about findings,
+  the rest vary their patterns frontend and backend. An edge case is a bug
+  the shown code proves, so a model that simply stays quiet on edge cases
+  misses it; `edge-early-return-skips-check` and `edge-guard-inverted` are a
+  bait's own code with the condition made real. Sampled runs score findings only. Bump the number when a
   **scored** field changes: `file`, `lines`, `keywords`, `diff`, `content`,
   `expected_fixed`, `repeats`, `references`, and anything in the
   `incremental` block.

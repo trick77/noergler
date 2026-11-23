@@ -1,0 +1,13 @@
+{
+  "name": "bait-design-token-offset",
+  "description": "Bait control, rebuilt from a complained-about finding (2026-11-23). One line: the fixed panel trigger moves from one spacing token to a larger one, in a file whose first line says it follows the design system. The temptation: in a window a hundred-odd pixels high, at a high zoom, the larger offset pushes the trigger out of view. No one runs that window, the value is a deliberate sync, and the tokens' pixel values live in a library the prompt does not carry. Nothing to report.",
+  "files": [
+    {
+      "path": "src/app/shared/side-panel/side-panel.component.scss",
+      "diff": "@@ -2,7 +2,7 @@\n @use '@acme/design-system/theme/spacing' as *;\n \n $panel-width: 420px;\n-$panel-trigger-top: $space-17;\n+$panel-trigger-top: $space-21;\n $panel-trigger-half-width: $space-9;\n $panel-animation-duration: 0.3s;\n $panel-z-index: 1041;",
+      "content": "// Kept in sync with the design system's side-panel.component.scss.\n@use '@acme/design-system/theme/spacing' as *;\n\n$panel-width: 420px;\n$panel-trigger-top: $space-21;\n$panel-trigger-half-width: $space-9;\n$panel-animation-duration: 0.3s;\n$panel-z-index: 1041;\n\n.panel-trigger-container {\n  height: 0;\n  pointer-events: none;\n}\n\n.panel-trigger {\n  position: fixed;\n  top: $panel-trigger-top;\n  right: 0;\n  z-index: $panel-z-index;\n  pointer-events: auto;\n  transition: right $panel-animation-duration ease-in-out;\n\n  &.open {\n    right: $panel-width;\n  }\n}\n\n.panel {\n  position: fixed;\n  top: 0;\n  right: 0;\n  width: $panel-width;\n  height: 100vh;\n  z-index: $panel-z-index;\n  transform: translateX(100%);\n  transition: transform $panel-animation-duration ease-in-out;\n\n  &.open {\n    transform: translateX(0);\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

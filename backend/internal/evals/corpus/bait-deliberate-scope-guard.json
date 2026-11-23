@@ -1,0 +1,13 @@
+{
+  "name": "bait-deliberate-scope-guard",
+  "description": "Bait control, rebuilt from a complained-about finding (2026-11-23). The side panel closes when focus leaves it, on narrow screens only: the guard is the handler's first line and its comment says so. The temptation: on a desktop the panel stays open when tabbing back into the page, may cover controls, and Escape moves focus elsewhere. Keeping it open on wide screens is the stated choice; whether it covers anything is layout, and Escape is code, neither shown. Nothing to report. Twin: edge-guard-inverted.",
+  "files": [
+    {
+      "path": "src/app/shared/side-panel/side-panel.component.ts",
+      "diff": "@@ -4,6 +4,7 @@\n   selector: 'app-side-panel',\n   templateUrl: './side-panel.component.html',\n   styleUrl: './side-panel.component.scss',\n+  host: { '(focusout)': 'onFocusOut($event)' },\n })\n export class SidePanelComponent {\n   private readonly element = inject(ElementRef<HTMLElement>);\n@@ -12,4 +13,14 @@\n   toggle(): void {\n     this.isOpen.update((open) => !open);\n   }\n+\n+  // Only narrow screens close the panel when focus moves to a control outside it.\n+  onFocusOut(event: FocusEvent): void {\n+    if (!this.isOpen() || !globalThis.matchMedia('(max-width: 599px)').matches) return;\n+    const next = event.relatedTarget;\n+    if (!(next instanceof Node) || this.element.nativeElement.contains(next)) {\n+      return;\n+    }\n+    this.isOpen.set(false);\n+  }\n }",
+      "content": "import { Component, ElementRef, inject, signal } from '@angular/core';\n\n@Component({\n  selector: 'app-side-panel',\n  templateUrl: './side-panel.component.html',\n  styleUrl: './side-panel.component.scss',\n  host: { '(focusout)': 'onFocusOut($event)' },\n})\nexport class SidePanelComponent {\n  private readonly element = inject(ElementRef<HTMLElement>);\n  readonly isOpen = signal(false);\n\n  toggle(): void {\n    this.isOpen.update((open) => !open);\n  }\n\n  // Only narrow screens close the panel when focus moves to a control outside it.\n  onFocusOut(event: FocusEvent): void {\n    if (!this.isOpen() || !globalThis.matchMedia('(max-width: 599px)').matches) return;\n    const next = event.relatedTarget;\n    if (!(next instanceof Node) || this.element.nativeElement.contains(next)) {\n      return;\n    }\n    this.isOpen.set(false);\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

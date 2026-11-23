@@ -1,0 +1,13 @@
+{
+  "name": "bait-old-smell-nearby",
+  "description": "Bait control for findings on lines the diff did not touch. The PR adds nothingToImport, which reads the same skip rule importRows uses. The unchanged code around it has a raw-typed public static list, System.out logging and string concatenation in a loop. None of that is this PR's; at most it belongs under pre_existing, never in findings. Nothing to report.",
+  "files": [
+    {
+      "path": "src/main/java/com/example/catalog/ProductImporter.java",
+      "diff": "@@ -30,4 +30,9 @@\n         }\n         return imported;\n     }\n+\n+    /** Whether no row of the file could be imported. */\n+    public boolean nothingToImport(List<Row> rows) {\n+        return rows.stream().allMatch(r -> r.name() == null || r.name().isBlank());\n+    }\n }",
+      "content": "package com.example.catalog;\n\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic class ProductImporter {\n\n    public static List LAST_ERRORS = new ArrayList();\n\n    private final ProductRepository products;\n\n    public ProductImporter(ProductRepository products) {\n        this.products = products;\n    }\n\n    public int importRows(List<Row> rows) {\n        int imported = 0;\n        String skipped = \"\";\n        for (Row row : rows) {\n            if (row.name() == null || row.name().isBlank()) {\n                skipped = skipped + row.line() + \",\";\n                continue;\n            }\n            products.save(new Product(row.sku(), row.name().strip(), row.price()));\n            imported++;\n        }\n        if (!skipped.isEmpty()) {\n            System.out.println(\"skipped rows: \" + skipped);\n            LAST_ERRORS.add(skipped);\n        }\n        return imported;\n    }\n\n    /** Whether no row of the file could be imported. */\n    public boolean nothingToImport(List<Row> rows) {\n        return rows.stream().allMatch(r -> r.name() == null || r.name().isBlank());\n    }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

@@ -1,0 +1,13 @@
+{
+  "name": "bait-concurrent-mark-read",
+  "description": "Bait control, a frontend variant of the second-actor pattern. markRead follows dismiss line for line: call the API, show an error toast on failure, reload the list either way. The temptation: the notification was dismissed in another tab, the server answers not found, and the user sees an error toast for a notification that is gone. That needs a second actor and a server reply no shown code proves; the error is handled and the reload shows the current list. Nothing to report.",
+  "files": [
+    {
+      "path": "src/app/notifications/notification-list.component.ts",
+      "diff": "@@ -29,4 +29,13 @@\n     }\n     await this.reload();\n   }\n+\n+  protected async markRead(n: Notification): Promise<void> {\n+    try {\n+      await firstValueFrom(this.api.markRead(n.id));\n+    } catch {\n+      this.toast.error('notifications.markRead.failed');\n+    }\n+    await this.reload();\n+  }\n }",
+      "content": "import { Component, OnInit, inject, signal } from '@angular/core';\nimport { firstValueFrom } from 'rxjs';\n\nimport { Notification, NotificationsApiService } from './notifications-api.service';\nimport { ToastService } from '../shared/toast/toast.service';\n\n@Component({\n  selector: 'app-notification-list',\n  templateUrl: './notification-list.component.html',\n})\nexport class NotificationListComponent implements OnInit {\n  private readonly api = inject(NotificationsApiService);\n  private readonly toast = inject(ToastService);\n  protected readonly notifications = signal<Notification[]>([]);\n\n  async ngOnInit(): Promise<void> {\n    await this.reload();\n  }\n\n  protected async reload(): Promise<void> {\n    this.notifications.set(await firstValueFrom(this.api.list()));\n  }\n\n  protected async dismiss(n: Notification): Promise<void> {\n    try {\n      await firstValueFrom(this.api.dismiss(n.id));\n    } catch {\n      this.toast.error('notifications.dismiss.failed');\n    }\n    await this.reload();\n  }\n\n  protected async markRead(n: Notification): Promise<void> {\n    try {\n      await firstValueFrom(this.api.markRead(n.id));\n    } catch {\n      this.toast.error('notifications.markRead.failed');\n    }\n    await this.reload();\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

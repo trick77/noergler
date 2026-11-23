@@ -1,0 +1,498 @@
+{
+  "Model": "mimo-v2.6-pro",
+  "Effort": "high",
+  "Samples": 5,
+  "Seeded": 0,
+  "Cases": [
+    {
+      "Case": "bait-invariant-assertion",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6113,
+            "CachedTokens": 6016,
+            "CompletionTokens": 2479,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The new subtitle dereferences `p.manager!.displayName` with a non-null assertion, but the `Person` type declares `manager?` as optional, so TypeScript accepts an employee record without a manager (e.g. a top-of-hierarchy employee or a payload deserialized from an API that omits the field). On such a record the computed signal throws `TypeError: Cannot read properties of undefined (reading 'displayName')` every time the card renders. The previous code had no such dependency. The interface comment claims the field is always set for employees, but nothing in the type enforces that invariant, so the runtime guarantee is only as strong as unseen producers of `Person`.",
+              "Confidence": 82,
+              "Headline": "Non-null assertion on optional manager can crash employee cards",
+              "Suggestion": null,
+              "Evidence": [
+                "  manager?: { id: string; displayName: string };",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6113,
+            "CachedTokens": 6016,
+            "CompletionTokens": 1888,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6113,
+            "CachedTokens": 6016,
+            "CompletionTokens": 2596,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "`Person.manager` is declared optional (`manager?: ...`), but the new subtitle dereferences it with a non-null assertion. A `Person` with `role: 'employee'` and no manager is a value this interface accepts, and rendering such a card makes the `computed` throw `TypeError: Cannot read properties of undefined (reading 'displayName')`, breaking the whole card. The interface comment claims every employee has a manager, but the type does not enforce it, so a record from the data source that is missing the manager (or has it null) crashes instead of degrading to a fallback subtitle.",
+              "Confidence": 85,
+              "Headline": "Non-null assertion on optional manager crashes managerless employees",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  manager?: { id: string; displayName: string };",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6113,
+            "CachedTokens": 6016,
+            "CompletionTokens": 2399,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The new subtitle dereferences `p.manager` through a non-null assertion, but the `Person` interface declares `manager` optional and the type system does not enforce the comment's invariant. Any `Person` with `role: 'employee'` and no `manager` (e.g. partially populated data from an API response that still type-checks) reaches `p.manager!.displayName` and throws a `TypeError` while rendering the card, whereas the previous implementation returned `'Employee'` unconditionally. The assertion converts a missing optional field into a rendering crash instead of a degraded subtitle.",
+              "Confidence": 80,
+              "Headline": "Non-null assertion on optional manager crashes for managerless employees",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  manager?: { id: string; displayName: string };",
+                "  /** Set for every employee; contractors have none. */",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6113,
+            "CachedTokens": 0,
+            "CompletionTokens": 1753,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 0.6,
+          "Full": 1,
+          "Clean": 0.4,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 0.3,
+          "Full": 1,
+          "Clean": 0.7,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 0.9,
+          "Full": 1,
+          "Clean": 0.1,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 2.6
+        }
+      ]
+    },
+    {
+      "Case": "bait-paid-invoice-payment",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6144,
+            "CachedTokens": 4096,
+            "CompletionTokens": 557,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The receipt is built from `invoice.getPayments().get(0)`, which assumes the payments list is non-empty and that its first element is the payment that settled the invoice. On an invoice marked PAID whose payments list is empty this throws `IndexOutOfBoundsException` instead of returning a receipt, and on an invoice with several payments (partial payments, refunds and re-payments) the receipt reports whatever the list happens to hold first — a wrong paid date and method. Because `Invoice`'s payments ordering and how `PAID` is set are not visible here, the exact failing input can't be pinned down, but the fix is to select the payment explicitly (e.g. the latest one) and handle the empty case.",
+              "Confidence": 80,
+              "Headline": "Receipt uses payments.get(0), which can crash or pick the wrong payment",
+              "Suggestion": null,
+              "Evidence": [
+                "Payment payment = invoice.getPayments().get(0);",
+                "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6144,
+            "CachedTokens": 4096,
+            "CompletionTokens": 1276,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "The receipt now reads `invoice.getPayments().get(0)`, which throws `IndexOutOfBoundsException` as soon as a `PAID` invoice has an empty payments list — e.g. a comped/waived or manually-statused invoice, or a historical record imported without payment lines. Previously the receipt was built purely from the invoice, so this crash path is new: any such invoice turns `receiptFor` into an unhandled 500 instead of a receipt or a domain error.",
+              "Confidence": 80,
+              "Headline": "Unguarded get(0) on the payments list crashes on PAID invoices with no payments",
+              "Suggestion": "        Payment payment = invoice.getPayments().stream().findFirst().orElseThrow(() -> new IllegalStateException(\"Invoice \" + invoiceId + \" is PAID but has no payments\"));",
+              "Evidence": [
+                "        Payment payment = invoice.getPayments().get(0);",
+                "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6144,
+            "CachedTokens": 4096,
+            "CompletionTokens": 2480,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6144,
+            "CachedTokens": 4096,
+            "CompletionTokens": 1451,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The receipt is now built from `invoice.getPayments().get(0)`, an unguarded index into the payments list. Any PAID invoice whose `getPayments()` list is empty (or null) — for example an invoice marked PAID by a manual adjustment, credit, or migration that created no payment rows — throws `IndexOutOfBoundsException` (or `NullPointerException`) on the `receiptFor` call instead of returning a receipt. A PAID status is checked before this line, but nothing shown guarantees that status implies at least one payment record. Guard the lookup (e.g. `stream().findFirst()` with an explicit error) so an empty list fails with a meaningful exception.",
+              "Confidence": 80,
+              "Headline": "Unguarded get(0) on payments crashes on a PAID invoice with no payment",
+              "Suggestion": null,
+              "Evidence": [
+                "Payment payment = invoice.getPayments().get(0);",
+                "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 6144,
+            "CachedTokens": 4096,
+            "CompletionTokens": 1517,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 0.6,
+          "Full": 1,
+          "Clean": 0.4,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 0.3,
+          "Full": 1,
+          "Clean": 0.7,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 0.9,
+          "Full": 1,
+          "Clean": 0.1,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 0.8,
+          "Full": 1,
+          "Clean": 0.2,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 2.6
+        }
+      ]
+    },
+    {
+      "Case": "bait-shortcut-field-guard",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6207,
+            "CachedTokens": 5760,
+            "CompletionTokens": 1916,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6207,
+            "CachedTokens": 6144,
+            "CompletionTokens": 1320,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6207,
+            "CachedTokens": 6144,
+            "CompletionTokens": 976,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6207,
+            "CachedTokens": 0,
+            "CompletionTokens": 1240,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 6207,
+            "CachedTokens": 6144,
+            "CompletionTokens": 3870,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 0,
+          "Full": 1,
+          "Clean": 1,
+          "Calls": 2
+        }
+      ]
+    }
+  ],
+  "Views": null,
+  "Agreement": null,
+  "Controls": null
+}

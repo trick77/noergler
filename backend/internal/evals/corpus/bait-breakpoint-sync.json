@@ -1,0 +1,13 @@
+{
+  "name": "bait-breakpoint-sync",
+  "description": "Bait control, a frontend variant of the tuning-value pattern. The mobile and tablet breakpoints move from 599/600 to 767/768 px together, so the ranges stay adjacent as the comment says, and the comment names the design system version the values come from. The temptation: a device between 600 and 767 px now gets the mobile layout, or a landscape phone does. That is what the change is for. Nothing to report.",
+  "files": [
+    {
+      "path": "src/app/shared/layout/breakpoints.ts",
+      "diff": "@@ -1,7 +1,7 @@\n // Media queries for the layout, adjacent so every width falls in exactly one\n-// range. The values are the design system's breakpoints.\n-export const BREAKPOINT_MOBILE = '(max-width: 599px)';\n-export const BREAKPOINT_TABLET = '(min-width: 600px) and (max-width: 1023px)';\n+// range. The values are the design system's breakpoints (v4: small ends at 767).\n+export const BREAKPOINT_MOBILE = '(max-width: 767px)';\n+export const BREAKPOINT_TABLET = '(min-width: 768px) and (max-width: 1023px)';\n export const BREAKPOINT_DESKTOP = '(min-width: 1024px)';\n \n export function matches(query: string): boolean {",
+      "content": "// Media queries for the layout, adjacent so every width falls in exactly one\n// range. The values are the design system's breakpoints (v4: small ends at 767).\nexport const BREAKPOINT_MOBILE = '(max-width: 767px)';\nexport const BREAKPOINT_TABLET = '(min-width: 768px) and (max-width: 1023px)';\nexport const BREAKPOINT_DESKTOP = '(min-width: 1024px)';\n\nexport function matches(query: string): boolean {\n  return globalThis.matchMedia(query).matches;\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

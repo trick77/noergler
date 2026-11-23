@@ -239,6 +239,71 @@ backticks (`sampled/2026-11-20-…-fence-before`, `…-fence-fixed`; prompts
 - The 2026-11-19 pair shows nothing: rev13's fences were indented, which
   closes no block, and its before arm was an older prompt.
 
+## Bait controls (2026-11-23)
+
+Question: teams complained of nitpicking and irrelevant findings, a team on
+`gpt-6.2-sol` among them. Does the corpus catch a model that does that, and
+does mimo do it?
+
+Four complained-about findings were looked at. All four built a failure on
+something no shown code proves: a second tab and the server's 409, a 110 px
+viewport, a business rule of the backend, a layout outside the diff; one
+also against a restriction the diff states in its first line. The prompt
+forbids each step ("do not speculate about unseen files", confidence 50 for
+a path through unseen code, report from 80). So the rules were there and
+were not followed. All four were posted, so their evidence had passed
+`ValidateFindings`, which checks quoted lines and not the premise.
+
+rev17 adds 11 baits (`bait-*`) and 4 seeded edge cases (`edge-*`). A bait is
+a correct diff with one such temptation. Two edge cases are twins, the bait's
+code with the condition made real: `edge-early-return-skips-check` of
+`bait-state-excluded-by-domain`, `edge-guard-inverted` of
+`bait-deliberate-scope-guard`. mimo-v2.6-pro high, 18 cases (three baits were
+withdrawn after the runs, below), 5 samples; a second arm with
+`briefs/review-no-restraint.txt`: "What NOT to flag" and the withhold
+sentences cut, every failure asked for. It keeps the report-from-80 gate
+and the rubric that puts a path through unseen code at 50 (the schema's
+minimum is 80 too), so a bait silent there is not shown to be unable to
+fire.
+
+- **mimo does not reproduce the complaints.** The four rebuilt ones are
+  silent in both arms. That is what `series.yaml` warns of: a false positive
+  of the production model may not show on the stand-in. It does not show the
+  model is the cause: which model wrote the four is not confirmed, no
+  `gpt-6.x` run was made (it needs the owner's okay), and the rebuilds are a
+  few dozen lines where the real PRs carry far more context to speculate
+  about.
+- **The 11 baits are silent on the production prompt**: 0 findings in 55
+  samples and in the series run. In the second arm one fires,
+  `bait-style-and-tests` (negative years) at 0.4 findings a sample; 0.04 a
+  review over all 11.
+- **Ten baits fire in no arm**, the four rebuilt complaints among them. They
+  guard against a prompt edit that makes mimo start; whether they tempt
+  another model is not measured.
+- **Three baits were withdrawn.** `bait-invariant-assertion` (a non-null
+  assertion on an optional field whose doc comment says it is always set:
+  the type says otherwise) and `bait-paid-invoice-payment` (an unguarded
+  `getPayments().get(0)` behind a PAID check: a senior reviewer would ask
+  too) fired at 0.6 findings a sample on the production prompt, and most
+  series runs would have been red on them alone. `bait-shortcut-field-guard`
+  was wrong twice: its selector matched `contenteditable="false"`, then, fixed,
+  every checkbox and radio against its own comment. Their samples are in the
+  `-withdrawn` files.
+- **The edge cases hold**, on the production prompt: `edge-failure-reported-as-success`
+  and `edge-guard-inverted` 5 of 5, `edge-paid-without-payment` 4 of 5,
+  `edge-early-return-skips-check` 3 of 5, the rest no finding at all
+  (5, 5, 5 and 4 of 5 without restraint). Silence on edge cases does not
+  win on these four.
+- **Read every finding on a bait before scoring it.** Four of the first 18
+  cases were built wrong, and the model was right: the panel handler (a bait
+  and its twin) kept a pointer flag no release outside cleared, and after
+  that fix a touch tap could reset it before `focusout` ran; a selector
+  matched `contenteditable="false"`; a comment named a companion file the
+  diff leaves alone. `…-bait-draft` and `…-bait-no-restraint-draft` hold the
+  flag, touch and selector reports; the one on the companion file and the
+  samples the reruns replaced were overwritten and cannot be checked.
+- Five samples see a rate move by about 15 points, not 5.
+
 ## Blocking rules (2026-11-15)
 
 Question: given `[blocking]` rules from AGENTS.md, does the model name the

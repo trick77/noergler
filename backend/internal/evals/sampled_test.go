@@ -326,6 +326,64 @@ func TestSampled_AgreementCountsFindingsByVotes(t *testing.T) {
 	}
 }
 
+// The control table counts every finding on a case that expects none, per
+// completed sample, and pools bait controls apart from the others. A seeded
+// case is never in it, and a sample that never completed is no clean one.
+func TestSampled_ControlRatesPoolBaitApart(t *testing.T) {
+	ok, bad := inference.OutcomeOK, inference.OutcomeTimedOut
+	client := &scriptedReviewer{
+		script: [][]inference.ReviewFinding{
+			// seeded case: not a control, whatever it reports
+			append(bug(12), nit(40)...), bug(12), bug(12),
+			// bait: an issue said twice byte for byte and a suggestion in
+			// sample 1; sample 2 fails on its draw and both redraws; one
+			// suggestion in sample 3
+			append(append(bug(30), bug(30)...), nit(35)...), nil, nil, nil, nit(30),
+			// a second bait, clean three times: every review weighs alike
+			nil, nil, nil,
+			// other control: no sample completes
+			nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		},
+		outcome: []inference.Outcome{
+			ok, ok, ok,
+			ok, bad, bad, bad, ok,
+			ok, ok, ok,
+			bad, bad, bad, bad, bad, bad, bad, bad, bad,
+		},
+	}
+	cases := append(oneCase(seeded),
+		Case{Name: "bait-x", Files: fixtureFiles()},
+		Case{Name: "bait-y", Files: fixtureFiles()},
+		Case{Name: "clean", Files: fixtureFiles()})
+	got := RunSampled(context.Background(), client, "{files}", cases, countStub, 3, 1, nil)
+
+	want := []ControlRate{
+		{Case: "bait-x", Samples: 2, Findings: 1.5, Issues: 0.5, Clean: 0},
+		{Case: "bait-y", Samples: 3, Findings: 0, Issues: 0, Clean: 1},
+		{Case: "clean"},
+	}
+	if len(got.Controls) != len(want) {
+		t.Fatalf("controls = %+v, want %d", got.Controls, len(want))
+	}
+	for i, w := range want {
+		g := got.Controls[i]
+		if g.Case != w.Case || g.Samples != w.Samples || !near(g.Findings, w.Findings) || !near(g.Issues, w.Issues) || !near(g.Clean, w.Clean) {
+			t.Errorf("control %d = %+v, want %+v", i, g, w)
+		}
+	}
+	// 3 findings over 5 completed reviews, not the mean of 1.5 and 0.
+	if c := got.ControlFindings; !near(c.Bait, 3.0/5) || c.BaitCases != 2 || c.Other != 0 || c.OtherCases != 0 || c.Incomplete != 2 {
+		t.Errorf("summary = %+v, want bait 0.6 over 2, no other, 2 incomplete", c)
+	}
+	var b strings.Builder
+	got.Report(&b)
+	for _, line := range []string{"bait 0.60 over 2 case(s), other controls 0.00 over 0", "INCOMPLETE 2/3", "2 control(s) lack a sample"} {
+		if !strings.Contains(b.String(), line) {
+			t.Errorf("report lacks %q:\n%s", line, b.String())
+		}
+	}
+}
+
 // Rescore reads only the stored samples, so a report survives a JSON round
 // trip and a view added later is scored on the same reviews.
 func TestSampled_RescoreFromJSONMatchesTheRun(t *testing.T) {

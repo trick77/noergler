@@ -1,0 +1,656 @@
+{
+  "Model": "mimo-v2.6-pro",
+  "Effort": "high",
+  "Samples": 5,
+  "Seeded": 0,
+  "Cases": [
+    {
+      "Case": "bait-invariant-assertion",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "`Person.manager` is declared optional (`manager?`), yet the employee branch dereferences it with `p.manager!.displayName`. The non-null assertion only silences the type checker; at runtime an employee whose manager is missing — a backend record with a null or omitted manager, or an employee whose manager was just deleted by another user — makes `p.manager` `undefined` and `undefined.displayName` throws, so the computed `subtitle` errors and the person card fails to render. The doc comment promises every employee has a manager, but nothing in the type or the code enforces that promise, and the previous implementation never touched `manager` at all, so this is a newly introduced crash path.",
+              "Confidence": 90,
+              "Headline": "Employee subtitle dereferences optional manager without a guard",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  /** Set for every employee; contractors have none. */",
+                "  manager?: { id: string; displayName: string };",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5636,
+            "CachedTokens": 4096,
+            "CompletionTokens": 947,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 5636,
+            "CachedTokens": 5632,
+            "CompletionTokens": 1895,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "`manager` is typed optional (`manager?`) yet line 23 force-unwraps it with `p.manager!.displayName`. The `!` only silences the compiler: it does not verify the data. The interface comment claims every employee has a manager, but the type admits `undefined`, and a backend payload that omits `manager` for an employee (a CEO, a new hire without a manager assigned, a partially populated record from a list endpoint) reaches this computed and throws `TypeError: Cannot read properties of undefined (reading 'displayName')`, breaking the card render. The previous implementation never dereferenced `manager`, so this crash path is introduced here.",
+              "Confidence": 85,
+              "Headline": "Force-unwrapping optional `manager` crashes on employees without one",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  manager?: { id: string; displayName: string };",
+                "    if (p.role === 'contractor') {",
+                "      return 'Contractor';",
+                "    }",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5636,
+            "CachedTokens": 5632,
+            "CompletionTokens": 966,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "The employee branch dereferences `p.manager!`, but `manager` is declared optional on `Person` and is filled from a server response the type cannot enforce. If the backend returns an employee with no `manager` (new hire before a manager is assigned, or a partial record from a different endpoint), `p.manager` is `undefined` at runtime and reading `.displayName` throws a `TypeError` inside the `computed`, breaking rendering of the person card instead of degrading to a label.",
+              "Confidence": 88,
+              "Headline": "Non-null assertion on optional manager crashes for employees without one",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  /** Set for every employee; contractors have none. */",
+                "  manager?: { id: string; displayName: string };",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5636,
+            "CachedTokens": 5632,
+            "CompletionTokens": 1694,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-invariant-assertion",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/people/person-card/person-card.component.ts",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "The new employee branch reads `p.manager!.displayName` on a field the interface types as optional (`manager?`). The non-null assertion only silences TypeScript; it does not enforce the doc comment's claim that every employee has a manager. When the backend returns an employee without one — a CEO, an unassigned new hire, or a record whose `role` is set while `manager` is null — the computed throws `TypeError: Cannot read properties of undefined (reading 'displayName')`, and the person card fails to render instead of showing a subtitle.",
+              "Confidence": 85,
+              "Headline": "Non-null assertion on optional manager crashes for manager-less employees",
+              "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+              "Evidence": [
+                "  /** Set for every employee; contractors have none. */",
+                "  manager?: { id: string; displayName: string };",
+                "    return `Reports to ${p.manager!.displayName}`;"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5636,
+            "CachedTokens": 5632,
+            "CompletionTokens": 1093,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 0.8,
+          "Full": 1,
+          "Clean": 0.2,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 0.6,
+          "Full": 1,
+          "Clean": 0.4,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 2.4
+        }
+      ]
+    },
+    {
+      "Case": "bait-paid-invoice-payment",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "`invoice.getPayments().get(0)` assumes a PAID invoice always has at least one payment row. The status is checked only as `PAID` before this line, so an invoice whose status was set to PAID without a persisted payment (data migration, a payment record deleted or purged, a status updated directly in the database) reaches `get(0)` on an empty list and throws `IndexOutOfBoundsException`, surfacing as a 500 instead of a domain error. The list can also be null if `Invoice.getPayments()` is not initialized, giving an NPE on the same line.",
+              "Confidence": 85,
+              "Headline": "First payment read without an empty-list guard on PAID invoices",
+              "Suggestion": null,
+              "Evidence": [
+                "        if (invoice.getStatus() != InvoiceStatus.PAID) {",
+                "            throw new InvoiceNotPaidException(invoiceId);",
+                "        }",
+                "        Payment payment = invoice.getPayments().get(0);"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            },
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The receipt is built from element 0 of the payments list, which is an arbitrary choice when an invoice has several payments (split payment, partial deposit plus final payment, a retried/voided payment followed by a successful one). Whether `getPayments()` returns insertion order, a database order without `ORDER BY`, or a set-backed collection, the receipt can show the wrong `method` and `paidAt` — e.g. the earlier deposit's method rather than the one that settled the invoice — and the ordering can change between calls as rows are added.",
+              "Confidence": 80,
+              "Headline": "Receipt uses an arbitrary payment when the invoice has several",
+              "Suggestion": null,
+              "Evidence": [
+                "        Payment payment = invoice.getPayments().get(0);",
+                "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 2,
+          "Cost": {
+            "PromptTokens": 5667,
+            "CachedTokens": 4096,
+            "CompletionTokens": 1441,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "`invoice.getPayments().get(0)` dereferences the first element of the payments list after only checking the invoice status. Any PAID invoice whose payments list is empty — e.g. an invoice marked paid by an external system or migration with no payment rows, or an early-access dataset — throws `IndexOutOfBoundsException` and turns a receipt request into a 500 instead of a receipt or a domain error. The previous code only read the invoice, so this crash path is introduced here. The same line also NPEs if `getPayments()` returns null from the repository mapping.",
+              "Confidence": 90,
+              "Headline": "Unbounded get(0) crashes on PAID invoice with no payments",
+              "Suggestion": null,
+              "Evidence": [
+                "Payment payment = invoice.getPayments().get(0);",
+                "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            },
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "The receipt is built from `getPayments().get(0)`, an arbitrary element with no ordering or matching against the amount actually settled. On an invoice with several payments (split or partial payments leading up to PAID), the receipt then reports the first payment's date and method while showing `invoice.getTotal()`, so the document attributes the full total to a single payment method and possibly a date before the invoice was fully paid. The previous code derived the date from the invoice itself and had no such coupling.",
+              "Confidence": 80,
+              "Headline": "Receipt picks an arbitrary payment when several exist",
+              "Suggestion": null,
+              "Evidence": [
+                "Payment payment = invoice.getPayments().get(0);",
+                "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 2,
+          "Cost": {
+            "PromptTokens": 5667,
+            "CachedTokens": 0,
+            "CompletionTokens": 1432,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "The only guard before this line checks `invoice.getStatus() != InvoiceStatus.PAID`; nothing guarantees `invoice.getPayments()` is non-null and non-empty. A PAID invoice with no payment rows — an imported/legacy invoice, one settled outside the system and reconciled manually, or a backend that flips status to PAID without persisting a `Payment` — makes `get(0)` throw `IndexOutOfBoundsException` (or `NullPointerException` when the relation is null), so `receiptFor` returns a 500 for an otherwise valid paid invoice. The removed line formatted `invoice.getUpdatedAt()` and could not fail this way.",
+              "Confidence": 80,
+              "Headline": "Unguarded payments.get(0) crashes on a PAID invoice with no payment",
+              "Suggestion": null,
+              "Evidence": [
+                "        if (invoice.getStatus() != InvoiceStatus.PAID) {",
+                "        Payment payment = invoice.getPayments().get(0);",
+                "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            },
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "`get(0)` hard-codes the first element of the payments collection. On an invoice with more than one payment (split payment, partial payment then final settlement, or a retried charge), the receipt's date and method come from whichever payment the repository happened to order first, not necessarily the one that settled the invoice; if the relation is unordered the choice is nondeterministic across loads. The receipt then reports the wrong `paidAt`/method to whoever reads it.",
+              "Confidence": 80,
+              "Headline": "Receipt picks payments.get(0) instead of the settling payment",
+              "Suggestion": null,
+              "Evidence": [
+                "        Payment payment = invoice.getPayments().get(0);",
+                "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 2,
+          "Redraws": 1,
+          "Cost": {
+            "PromptTokens": 5667,
+            "CachedTokens": 5632,
+            "CompletionTokens": 3434,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "The receipt now reads `invoice.getPayments().get(0)`. On a PAID invoice whose payments collection is empty — a stale record, an invoice marked PAID manually or by a backfill, or a backend response that omits payments — `get(0)` throws `IndexOutOfBoundsException` and the receipt request fails instead of returning data. The same line also assumes the first element is the payment the receipt should reflect: with multiple payments (partial payments closing out the total) the collection order is not guaranteed, so the receipt can show the date and method of an arbitrary payment rather than the one that completed the invoice.",
+              "Confidence": 85,
+              "Headline": "Receipt uses get(0) on the payments list without an empty-list guard",
+              "Suggestion": "        Payment payment = invoice.getPayments().stream().reduce((a, b) -> b).orElseThrow(() -> new IllegalStateException(\"PAID invoice \" + invoiceId + \" has no payments\"));",
+              "Evidence": [
+                "Payment payment = invoice.getPayments().get(0);",
+                "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5667,
+            "CachedTokens": 5632,
+            "CompletionTokens": 1403,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-paid-invoice-payment",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "issue",
+              "Comment": "`invoice.getPayments().get(0)` is called with no size check after only the status is validated. A PAID invoice whose payment records are absent — legacy rows migrated without payment lines, payments purged/archived, or a status set by an external billing system before the payment is synced — produces an empty list, and `receiptFor` then throws `IndexOutOfBoundsException` instead of a domain error, surfacing as a 500 on the receipt endpoint. The removed line used `invoice.getUpdatedAt()`, which is always present on the invoice, so this crash path is newly introduced here.",
+              "Confidence": 88,
+              "Headline": "Unguarded get(0) crashes when a PAID invoice has no payments",
+              "Suggestion": "        Payment payment = invoice.getPayments().stream().findFirst().orElseThrow(() -> new IllegalStateException(\"PAID invoice \" + invoiceId + \" has no payments\"));",
+              "Evidence": [
+                "        if (invoice.getStatus() != InvoiceStatus.PAID) {",
+                "            throw new InvoiceNotPaidException(invoiceId);",
+                "        }",
+                "        Payment payment = invoice.getPayments().get(0);"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            },
+            {
+              "File": "src/main/java/com/example/billing/ReceiptService.java",
+              "Line": 23,
+              "Severity": "suggestion",
+              "Comment": "For an invoice with more than one payment — partial payments, a retry after a failed attempt, or a split across methods — `get(0)` picks whichever entry the repository returns first, which is not necessarily the payment that settled the invoice. The receipt then reports that payment's date and `getMethod()` while carrying `invoice.getTotal()`, so a customer who paid part by card and the remainder by transfer sees only the first payment's method and an earlier `paidAt` date. Nothing in `ReceiptService` or the `Payment` accessors shown pins down ordering or identifies the settling payment.",
+              "Confidence": 80,
+              "Headline": "Receipt reports the first payment, not the one that settled the invoice",
+              "Suggestion": null,
+              "Evidence": [
+                "        Payment payment = invoice.getPayments().get(0);",
+                "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+                "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 2,
+          "Cost": {
+            "PromptTokens": 5667,
+            "CachedTokens": 5632,
+            "CompletionTokens": 2848,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 1,
+          "Full": 1,
+          "Clean": 0,
+          "Calls": 2
+        }
+      ]
+    },
+    {
+      "Case": "bait-shortcut-field-guard",
+      "Seeded": 0,
+      "Samples": [
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 5730,
+            "CachedTokens": 4096,
+            "CompletionTokens": 3848,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 5730,
+            "CachedTokens": 5632,
+            "CompletionTokens": 6302,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": null,
+          "Matches": [],
+          "Extra": 0,
+          "Cost": {
+            "PromptTokens": 5730,
+            "CachedTokens": 5632,
+            "CompletionTokens": 1808,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/shared/shortcuts/shortcuts.directive.ts",
+              "Line": 16,
+              "Severity": "suggestion",
+              "Comment": "The new guard returns before the `switch` for every key while a form control or contenteditable region has focus, so `closeOverlay` can never fire from inside one. In an overlay that autofocuses a search field (the `/` → `focusSearch` flow this directive drives), pressing Escape only reaches the field's own default — nothing at all for a plain `type=\"text\"` input, since the \"clears a search box\" behavior is specific to `type=\"search\"` — and the overlay stays open. The user then has to click away or tab out to dismiss it, even though Escape is the conventional way to close an overlay and `closeOverlay` exists precisely for that.",
+              "Confidence": 80,
+              "Headline": "Escape is swallowed in fields, so overlays can't be dismissed from a focused input",
+              "Suggestion": "    if (event.key !== 'Escape' && target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) {",
+              "Evidence": [
+                "const target = event.target;",
+                "if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) {",
+                "  return;",
+                "}",
+                "      case 'Escape':"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5730,
+            "CachedTokens": 5632,
+            "CompletionTokens": 8550,
+            "NanoUSD": null
+          }
+        },
+        {
+          "Case": "bait-shortcut-field-guard",
+          "Outcome": "ok",
+          "Findings": [
+            {
+              "File": "src/app/shared/shortcuts/shortcuts.directive.ts",
+              "Line": 16,
+              "Severity": "suggestion",
+              "Comment": "`target.closest('input, textarea, select')` matches every input type, not just text entry, so the short-circuit suppresses all three shortcuts whenever any input has focus. Scenario: a user clicks a filter checkbox (or tabs to a `<select>` / slider) in the toolbar, opens the help overlay, presses Escape — `closeOverlay` never emits because the focused control matched the guard, and the overlay stays open until they move focus with the mouse. The stated rationale ('it clears a search box') applies only to text-entry controls; checkboxes, radios, `type=\"button\"/\"submit\"/\"range\"/\"color\"/\"file\"` inputs and `select` consume neither `/`, `?` nor Escape, so they should not swallow the shortcuts.",
+              "Confidence": 88,
+              "Headline": "Shortcut guard swallows Escape for non-text inputs and selects",
+              "Suggestion": "    if (target instanceof HTMLElement && (target.isContentEditable || target.closest('textarea, select, input:not([type]), input[type=\"text\"], input[type=\"search\"], input[type=\"email\"], input[type=\"url\"], input[type=\"tel\"], input[type=\"number\"], input[type=\"password\"]'))) {",
+              "Evidence": [
+                "    const target = event.target;",
+                "    if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) {",
+                "      return;",
+                "    }"
+              ],
+              "BlockingRule": null,
+              "Category": "bug"
+            }
+          ],
+          "Matches": [],
+          "Extra": 1,
+          "Cost": {
+            "PromptTokens": 5730,
+            "CachedTokens": 5632,
+            "CompletionTokens": 5312,
+            "NanoUSD": null
+          }
+        }
+      ],
+      "Views": [
+        {
+          "Name": "single",
+          "Caught": 0,
+          "Extra": 0.4,
+          "Full": 1,
+          "Clean": 0.6,
+          "Calls": 1
+        },
+        {
+          "Name": "agree2",
+          "Caught": 0,
+          "Extra": 0.1,
+          "Full": 1,
+          "Clean": 0.9,
+          "Calls": 2
+        },
+        {
+          "Name": "either2",
+          "Caught": 0,
+          "Extra": 0.7,
+          "Full": 1,
+          "Clean": 0.3,
+          "Calls": 2
+        },
+        {
+          "Name": "vote3",
+          "Caught": 0,
+          "Extra": 0.3,
+          "Full": 1,
+          "Clean": 0.7,
+          "Calls": 3
+        },
+        {
+          "Name": "tiered3",
+          "Caught": 0,
+          "Extra": 0.3,
+          "Full": 1,
+          "Clean": 0.7,
+          "Calls": 3
+        },
+        {
+          "Name": "union3",
+          "Caught": 0,
+          "Extra": 0.9,
+          "Full": 1,
+          "Clean": 0.1,
+          "Calls": 3
+        },
+        {
+          "Name": "adaptive",
+          "Caught": 0,
+          "Extra": 0.3,
+          "Full": 1,
+          "Clean": 0.7,
+          "Calls": 2.6
+        }
+      ]
+    }
+  ],
+  "Views": null,
+  "Agreement": null,
+  "Controls": null
+}

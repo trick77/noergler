@@ -1,0 +1,31 @@
+{
+  "name": "edge-paid-without-payment",
+  "description": "A seeded edge case beside the business-rule baits: a receipt for a paid invoice takes its date and method from the first payment, and the class itself has markPaidExternally, which sets PAID and, as its doc says, records no Payment. A receipt for such an invoice reads get(0) of an empty list and throws. Seeded.",
+  "files": [
+    {
+      "path": "src/main/java/com/example/billing/ReceiptService.java",
+      "diff": "@@ -31,6 +31,8 @@\n         if (invoice.getStatus() != InvoiceStatus.PAID) {\n             throw new InvoiceNotPaidException(invoiceId);\n         }\n-        return new Receipt(invoice.getNumber(), invoice.getTotal(), DATE.format(invoice.getUpdatedAt()));\n+        Payment payment = invoice.getPayments().get(0);\n+        return new Receipt(invoice.getNumber(), invoice.getTotal(),\n+                DATE.format(payment.getPaidAt()), payment.getMethod());\n     }\n }",
+      "content": "package com.example.billing;\n\nimport java.time.format.DateTimeFormatter;\nimport org.springframework.stereotype.Service;\n\n@Service\npublic class ReceiptService {\n\n    private static final DateTimeFormatter DATE = DateTimeFormatter.ISO_LOCAL_DATE;\n\n    private final InvoiceRepository invoices;\n\n    public ReceiptService(InvoiceRepository invoices) {\n        this.invoices = invoices;\n    }\n\n    /**\n     * Marks an invoice paid outside the platform (a bank transfer reconciled\n     * by hand). No Payment is recorded for it.\n     */\n    public void markPaidExternally(String invoiceId) {\n        Invoice invoice = invoices.findById(invoiceId)\n                .orElseThrow(() -> new InvoiceNotFoundException(invoiceId));\n        invoice.setStatus(InvoiceStatus.PAID);\n        invoices.save(invoice);\n    }\n\n    public Receipt receiptFor(String invoiceId) {\n        Invoice invoice = invoices.findById(invoiceId)\n                .orElseThrow(() -> new InvoiceNotFoundException(invoiceId));\n        if (invoice.getStatus() != InvoiceStatus.PAID) {\n            throw new InvoiceNotPaidException(invoiceId);\n        }\n        Payment payment = invoice.getPayments().get(0);\n        return new Receipt(invoice.getNumber(), invoice.getTotal(),\n                DATE.format(payment.getPaidAt()), payment.getMethod());\n    }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "receipt-empty-payments",
+      "file": "src/main/java/com/example/billing/ReceiptService.java",
+      "lines": [
+        34,
+        36
+      ],
+      "keywords": [
+        "IndexOutOfBounds",
+        "out of bounds",
+        "empty",
+        "no payment",
+        "markPaidExternally",
+        "externally"
+      ],
+      "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+    }
+  ]
+}
