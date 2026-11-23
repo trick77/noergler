@@ -216,7 +216,8 @@ func (r *Reviewer) failureNoticeFor(ctx context.Context, outcome inference.Outco
 	default:
 		return
 	}
-	r.failureNotice(ctx, project, repo, prID, prReviewID, fresh, staleBanner(l, lead, priorCommit), label)
+	// fresh alone is wrapped: the stripper finds the banner by one row.
+	r.failureNotice(ctx, project, repo, prID, prReviewID, render.WrapProse(fresh), staleBanner(l, lead, priorCommit), label)
 }
 
 // staleBanner is the banner row every failure notice shares. Each language
@@ -239,7 +240,7 @@ func staleBanner(l lang.Lang, lead, priorCommit string) string {
 // must add that a review was not run and the old one does not say so.
 func (r *Reviewer) costLimitNotice(ctx context.Context, l lang.Lang, project, repo string, prID int, prReviewID int64, cumulativeUSD, limitUSD float64, blocked, once bool) {
 	banner := render.CostLimitBanner(l, cumulativeUSD, limitUSD, blocked)
-	r.bannerSummary(ctx, project, repo, prID, prReviewID, banner, func(live string) (string, bool) {
+	r.bannerSummary(ctx, project, repo, prID, prReviewID, render.WrapProse(banner), func(live string) (string, bool) {
 		stripped := render.StripCostBanner(live)
 		if once && stripped != live && (!blocked || render.CostBannerSaysBlocked(live)) {
 			return "", false

@@ -16,7 +16,7 @@ func OptOutBranchSummary(l lang.Lang, keyword, branch string) string {
 	if l == lang.EN {
 		return optOutBranchSummaryEN(keyword, branch)
 	}
-	return "### Review übersprungen — Opt-out-Keyword im Branch-Namen 🛑\n\n" +
+	return WrapProse("### Review übersprungen — Opt-out-Keyword im Branch-Namen 🛑\n\n" +
 		fmt.Sprintf("Der Source-Branch `%s` enthält das Opt-out-Keyword ", branch) +
 		fmt.Sprintf("`%s`, deshalb wurde das Auto-Review übersprungen. Für diesen PR ", keyword) +
 		"wurden keine LLM- oder Jira-Aufrufe gemacht.\n\n" +
@@ -24,10 +24,10 @@ func OptOutBranchSummary(l lang.Lang, keyword, branch string) string {
 		"- Den Branch ohne das Keyword umbenennen und erneut pushen; das " +
 		"nächste Webhook-Event löst ein volles Review aus.\n" +
 		"- Oder den Bot in einem Kommentar explizit @erwähnen, um auf diesem " +
-		"Branch einmalig ein Review zu bekommen — Mentions sind nicht stummgeschaltet.\n\n" +
+		"Branch einmalig ein Review zu bekommen; Mentions sind nicht stummgeschaltet.\n\n" +
 		"**Einstellungen**\n" +
 		"- Das Keyword wird über `REVIEW_OPT_OUT_BRANCH_KEYWORD` am " +
-		"noergler-Service gesetzt (leerer String schaltet die Funktion ab).\n"
+		"noergler-Service gesetzt (leerer String schaltet die Funktion ab).\n")
 }
 
 // AgentsMDMissingSummary is the skip summary when the team's rules file
@@ -38,7 +38,7 @@ func AgentsMDMissingSummary(l lang.Lang, name string) string {
 	if l == lang.EN {
 		return agentsMDMissingSummaryEN(name)
 	}
-	return fmt.Sprintf("### Review übersprungen — keine `%s` gefunden 🛑\n\n", name) +
+	return WrapProse(fmt.Sprintf("### Review übersprungen — keine `%s` gefunden 🛑\n\n", name) +
 		fmt.Sprintf("Dieses Repository hat weder auf dem PR-Branch noch auf dem Ziel-Branch eine `%s`, ", name) +
 		"deshalb wurde das Review nicht ausgeführt.\n\n" +
 		"**Was tun**\n" +
@@ -56,7 +56,7 @@ func AgentsMDMissingSummary(l lang.Lang, name string) string {
 		fmt.Sprintf("Die oft zitierte [ETH-Studie](%s) rät nicht davon ab: ", ETHStudyURL) +
 		"Von Menschen geschriebene Dateien sollen laut den Autoren enthalten, was Code und README " +
 		"nicht zeigen, etwa Konventionen und nicht-funktionale Anforderungen. Nichts gebracht " +
-		"haben von Agents generierte Dateien.\n"
+		"haben von Agents generierte Dateien.\n")
 }
 
 // DiffTooLargeSummary is the skip summary when the PR diff exceeds the byte
@@ -65,36 +65,36 @@ func DiffTooLargeSummary(l lang.Lang, limit int) string {
 	if l == lang.EN {
 		return diffTooLargeSummaryEN(limit)
 	}
-	return "### Review übersprungen — Diff zu gross 🛑\n\n" +
+	return WrapProse("### Review übersprungen — Diff zu gross 🛑\n\n" +
 		fmt.Sprintf("Der PR-Diff ist grösser als %d MiB, mehr als in ein ", limit/(1024*1024)) +
 		"Review passt, auch nach Komprimierung, deshalb wurde das Review nicht ausgeführt.\n\n" +
 		"**Was tun**\n" +
 		"- Die Änderung in kleinere PRs aufteilen, oder generierte Dateien, " +
 		"vendored Code und Lockfile-Änderungen in einen eigenen PR verschieben.\n" +
 		"- Die kleinere Änderung pushen; das nächste Webhook-Event auf diesem PR " +
-		"löst ein volles Review aus.\n"
+		"löst ein volles Review aus.\n")
 }
 
 func agentsMDTooLargeSummaryDE(name string, tokens, limit int, fr string) string {
-	return fmt.Sprintf("### Review übersprungen — `%s` zu gross 🛑\n\n", name) +
-		fmt.Sprintf("`%s` umfasst ~%s Tokens und überschreitet das konfigurierte ", name, Fmt(tokens)) +
-		fmt.Sprintf("harte Limit von %s Tokens. Zu grosse Agent-Anweisungen verdrängen ", Fmt(limit)) +
-		"den eigentlichen Diff, verschlechtern die Review-Qualität (Context Rot) und treiben " +
-		"die Inferenzkosten hoch — deshalb wurde das Review nicht ausgeführt. " +
-		fmt.Sprintf("Die [ETH-Studie](%s) empfiehlt dasselbe: Kontextdateien ", ETHStudyURL) +
-		"*„should only contain specific additional instructions beyond what is already " +
-		"available in the codebase“*.\n\n" +
-		"**Was tun**\n" +
-		"- Behalten, was der Code nicht zeigt: Invarianten, Konventionen, Entscheide und ihr Warum. " +
-		"Streichen, was Code oder README schon sagen; Prosa durch knappe Regeln ersetzen.\n" +
-		"- Ausführliches Referenzmaterial in separate Dateien auslagern und " +
-		"verlinken; die Hauptdatei schlank halten.\n" +
-		"- Die schlankere Datei pushen; das nächste Webhook-Event auf diesem PR " +
-		"löst ein volles Review aus.\n\n" +
-		"**Einstellungen**\n" +
-		"- Das Limit über `REVIEW_AGENTS_MD_MAX_TOKENS` am noergler-Service " +
-		"erhöhen, oder auf `0` setzen, um die harte Grenze ganz abzuschalten " +
-		"(die weiche Warnung über `REVIEW_AGENTS_MD_WARN_TOKENS` bleibt).\n\n" +
-		"**Weiterführende Links**\n" +
+	return WrapProse(fmt.Sprintf("### Review übersprungen — `%s` zu gross 🛑\n\n", name)+
+		fmt.Sprintf("`%s` umfasst ~%s Tokens und überschreitet das konfigurierte ", name, Fmt(tokens))+
+		fmt.Sprintf("harte Limit von %s Tokens. Zu grosse Agent-Anweisungen verdrängen ", Fmt(limit))+
+		"den eigentlichen Diff, verschlechtern die Review-Qualität (Context Rot) und treiben "+
+		"die Inferenzkosten hoch, deshalb wurde das Review nicht ausgeführt. "+
+		fmt.Sprintf("Die [ETH-Studie](%s) empfiehlt dasselbe: Kontextdateien ", ETHStudyURL)+
+		"*„should only contain specific additional instructions beyond what is already "+
+		"available in the codebase“*.\n\n"+
+		"**Was tun**\n"+
+		"- Behalten, was der Code nicht zeigt: Invarianten, Konventionen, Entscheide und ihr Warum. "+
+		"Streichen, was Code oder README schon sagen; Prosa durch knappe Regeln ersetzen.\n"+
+		"- Ausführliches Referenzmaterial in separate Dateien auslagern und "+
+		"verlinken; die Hauptdatei schlank halten.\n"+
+		"- Die schlankere Datei pushen; das nächste Webhook-Event auf diesem PR "+
+		"löst ein volles Review aus.\n\n"+
+		"**Einstellungen**\n"+
+		"- Das Limit über `REVIEW_AGENTS_MD_MAX_TOKENS` am noergler-Service "+
+		"erhöhen, oder auf `0` setzen, um die harte Grenze ganz abzuschalten "+
+		"(die weiche Warnung über `REVIEW_AGENTS_MD_WARN_TOKENS` bleibt).\n\n"+
+		"**Weiterführende Links**\n") +
 		fr + "\n"
 }

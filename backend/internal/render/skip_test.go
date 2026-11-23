@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/trick77/noergler/internal/lang"
 )
@@ -104,6 +105,52 @@ func TestSkipSummariesNameTheTeamsFile(t *testing.T) {
 			}
 			if strings.Contains(body, "AGENTS.md") {
 				t.Errorf("%s %s summary still names AGENTS.md:\n%s", l, what, got)
+			}
+		}
+	}
+}
+
+// The skip summaries wrap like the review summary (user, 2026-11-23), in both
+// languages; the title and the further-reading links stay whole.
+func TestSkipSummariesAreWrapped(t *testing.T) {
+	for _, l := range []lang.Lang{lang.EN, lang.DE} {
+		for what, got := range map[string]string{
+			"opt-out":        OptOutBranchSummary(l, "noergloff", "feature/noergloff-thing"),
+			"missing":        AgentsMDMissingSummary(l, "AGENTS.md"),
+			"diff too large": DiffTooLargeSummary(l, 10*1024*1024),
+			"too large":      AgentsMDTooLargeSummary(l, "AGENTS.md", 12345, 7000, "[A guide whose title has several words](https://intra/a/rather/long/path/to/the/guide/that/runs/on)"),
+		} {
+			lines := strings.Split(got, "\n")
+			if len(lines) < 5 {
+				t.Errorf("%s %s summary has %d lines", l, what, len(lines))
+			}
+			for _, line := range lines {
+				if strings.HasPrefix(line, "###") || strings.HasPrefix(line, "- [") {
+					continue
+				}
+				if n := utf8.RuneCountInString(line); n > WrapWidth {
+					t.Errorf("%s %s summary: line of %d columns: %q", l, what, n, line)
+				}
+				if strings.Contains(line, emDash) {
+					t.Errorf("%s %s summary: an em dash in the body, a list item when it starts a line: %q", l, what, line)
+				}
+			}
+			// Links whole on their line, titles included.
+			var links []string
+			switch what {
+			case "missing", "too large":
+				links = append(links, l.Pick("[ETH-Studie](", "[ETH\u00a0study](")+ETHStudyURL+")")
+			}
+			if what == "too large" {
+				for _, link := range agentsMDFurtherReading {
+					links = append(links, "- ["+link.Title+"]("+link.URL+")\n")
+				}
+				links = append(links, "- [A guide whose title has several words](https://intra/a/rather/long/path/to/the/guide/that/runs/on)\n")
+			}
+			for _, link := range links {
+				if !strings.Contains(got, link) {
+					t.Errorf("%s %s summary: link not whole: %q in\n%s", l, what, link, got)
+				}
 			}
 		}
 	}
