@@ -692,11 +692,16 @@ export const en = {
       "Skipped means it never asked the model. Failed means it asked and something broke.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "It is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root. When findings keep being disputed for the same reason (by default in 3 PRs within 30 days), the reply in the finding thread proposes the AGENTS.md line that stops them.",
+      "AGENTS.md, or the name your team chose, is what the review checks your code against: the conventions and constraints a new reviewer on your team would have to be told. Put it at the repo root. When findings keep being disputed for the same reason (by default in 3 PRs within 30 days), the reply in the finding thread proposes the AGENTS.md line that stops them.",
     agentsA2:
       "In a monorepo, the root file holds what applies everywhere; it stays required. An AGENTS.md in a subdirectory adds rules for the files below it, at any depth, [blocking] ones included, which block only there: a changed file gets every one from the root down, and the deeper one wins where they differ. Do not repeat what a parent already says. The summary names the extra files it applied.",
     agentsA3:
       "Keep it short. The summary starts warning well before the size limit, counting the root and subdirectory files together. A root file past the limit stops reviews entirely; a subdirectory file that no longer fits is left out and the summary names it.",
+    agentsWhyQ: "Is an AGENTS.md worth it?",
+    agentsWhyA1:
+      "Yes, with what the code does not show: invariants, your team's conventions, decisions and their why. That is what the review holds your code to. The often-quoted <study>ETH study</study> does not advise against it; what did not help were generated files.",
+    agentsWhyA2:
+      "AGENTS.md is the widely used standard most coding agents read, so one file serves agent and review alike. Prefer REVIEW.md? Your team can set the name. Want no rules? An empty file is enough.",
     stopQ: "How do I stop noergler reviewing a PR?",
     stopA1:
       "Put <code>noergloff</code> anywhere in the source branch name: <code>feature/noergloff-spike</code> is never auto-reviewed.",

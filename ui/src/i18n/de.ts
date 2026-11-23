@@ -679,11 +679,16 @@ export const de = {
       "Übersprungen heisst, noergler hat das Modell nie gefragt. Fehlgeschlagen heisst, er hat gefragt und dabei ist ein Fehler aufgetreten.",
     agentsQ: "AGENTS.md",
     agentsA1:
-      "Dagegen prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos. Wird ein Befund immer wieder mit demselben Grund bestritten (standardmässig in 3 PRs innert 30 Tagen), schlägt die Antwort im Befund-Thread die Zeile für AGENTS.md vor, die ihn künftig verhindert.",
+      "Gegen AGENTS.md, oder den Namen, den dein Team gewählt hat, prüft das Review deinen Code: die Konventionen und Einschränkungen, die man einem neuen Reviewer in deinem Team erklären müsste. Lege die Datei ins Root des Repos. Wird ein Befund immer wieder mit demselben Grund bestritten (standardmässig in 3 PRs innert 30 Tagen), schlägt die Antwort im Befund-Thread die Zeile für AGENTS.md vor, die ihn künftig verhindert.",
     agentsA2:
       "Im Monorepo steht im Root, was überall gilt; es bleibt Pflicht. Eine AGENTS.md in einem Unterordner ergänzt Regeln für die Dateien darunter, in beliebiger Tiefe, auch [blocking]-Regeln, die nur dort sperren: Eine geänderte Datei bekommt jede vom Root abwärts, und wo sie sich widersprechen, gewinnt die tiefere. Wiederhole nicht, was weiter oben schon steht. Die Zusammenfassung nennt die zusätzlich angewendeten Dateien.",
     agentsA3:
       "Halte es kurz. Die Zusammenfassung warnt schon lange vor dem Grössenlimit und zählt dabei Root und Unterordner zusammen. Ist die Datei im Root über dem Limit, hören Reviews ganz auf; eine Datei aus einem Unterordner, die nicht mehr passt, wird weggelassen und in der Zusammenfassung genannt.",
+    agentsWhyQ: "Lohnt sich eine AGENTS.md?",
+    agentsWhyA1:
+      "Ja, mit dem, was der Code nicht zeigt: Invarianten, Konventionen deines Teams, Entscheide und ihr Warum. Daran misst das Review deinen Code. Die oft zitierte <study>ETH-Studie</study> rät nicht davon ab; nichts gebracht haben generierte Dateien.",
+    agentsWhyA2:
+      "AGENTS.md ist der verbreitete Standard, den die meisten Coding-Agents lesen; eine Datei dient so Agent und Review. Lieber REVIEW.md? Dein Team kann den Namen einstellen. Keine Regeln gewünscht? Eine leere Datei genügt.",
     stopQ: "Wie verhindere ich, dass noergler einen PR prüft?",
     stopA1:
       "Schreibe <code>noergloff</code> irgendwo in den Namen des Source-Branch: <code>feature/noergloff-spike</code> wird nie automatisch geprüft.",

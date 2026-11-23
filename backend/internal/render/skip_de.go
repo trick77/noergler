@@ -51,7 +51,12 @@ func AgentsMDMissingSummary(l lang.Lang, name string) string {
 		"Regeln für diesen Teil.\n" +
 		fmt.Sprintf("- Keine Projektregeln gewünscht? Eine leere `%s` genügt; das Review ", name) +
 		"läuft dann mit allgemeinen Regeln.\n" +
-		"- Die Datei pushen; das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
+		"- Die Datei pushen; das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n\n" +
+		"**Zur ETH-Studie**\n" +
+		fmt.Sprintf("Die oft zitierte [ETH-Studie](%s) rät nicht davon ab: ", ETHStudyURL) +
+		"Von Menschen geschriebene Dateien sollen laut den Autoren enthalten, was Code und README " +
+		"nicht zeigen, etwa Konventionen und nicht-funktionale Anforderungen. Nichts gebracht " +
+		"haben von Agents generierte Dateien.\n"
 }
 
 // DiffTooLargeSummary is the skip summary when the PR diff exceeds the byte
@@ -75,7 +80,10 @@ func agentsMDTooLargeSummaryDE(name string, tokens, limit int, fr string) string
 		fmt.Sprintf("`%s` umfasst ~%s Tokens und überschreitet das konfigurierte ", name, Fmt(tokens)) +
 		fmt.Sprintf("harte Limit von %s Tokens. Zu grosse Agent-Anweisungen verdrängen ", Fmt(limit)) +
 		"den eigentlichen Diff, verschlechtern die Review-Qualität (Context Rot) und treiben " +
-		"die Inferenzkosten hoch — deshalb wurde das Review nicht ausgeführt.\n\n" +
+		"die Inferenzkosten hoch — deshalb wurde das Review nicht ausgeführt. " +
+		fmt.Sprintf("Die [ETH-Studie](%s) empfiehlt dasselbe: Kontextdateien ", ETHStudyURL) +
+		"*„should only contain specific additional instructions beyond what is already " +
+		"available in the codebase“*.\n\n" +
 		"**Was tun**\n" +
 		"- Behalten, was der Code nicht zeigt: Invarianten, Konventionen, Entscheide und ihr Warum. " +
 		"Streichen, was Code oder README schon sagen; Prosa durch knappe Regeln ersetzen.\n" +

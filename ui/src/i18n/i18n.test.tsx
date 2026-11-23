@@ -259,5 +259,12 @@ describe("German UI", () => {
     ).toBeDefined();
     expect(screen.getByText("AGENTS.md fehlt")).toBeDefined();
     expect(screen.getByText("noergloff")).toBeDefined();
+    // The study is a link, opened beside the dashboard, never the catalog's
+    // own URL.
+    const study = screen.getByText("ETH-Studie").closest("a");
+    expect(study?.getAttribute("href")).toBe(
+      "https://arxiv.org/abs/2602.11988",
+    );
+    expect(study?.getAttribute("target")).toBe("_blank");
   });
 });

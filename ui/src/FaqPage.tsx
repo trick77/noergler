@@ -50,11 +50,21 @@ const SKIPS = [
 ] as const;
 
 type MarkupKey =
-  "faq.whyNotA" | "faq.stopA1" | "faq.stopA2" | "faq.stopA3" | "faq.filesA2";
+  | "faq.whyNotA"
+  | "faq.stopA1"
+  | "faq.stopA2"
+  | "faq.stopA3"
+  | "faq.filesA2"
+  | "faq.agentsWhyA1";
 
-/** T renders a catalog entry that carries markup: <code> and <strong> map
- *  to the page's own elements, so a translation can move them around the
- *  sentence without touching JSX. */
+/** The ETH Zurich study on AGENTS.md (arXiv 2602.11988), often quoted as
+ *  "AGENTS.md is useless": what it found is that generated files did not
+ *  help. Fixed here, never from the catalog. */
+const ETH_STUDY = "https://arxiv.org/abs/2602.11988";
+
+/** T renders a catalog entry that carries markup: <code>, <strong> and
+ *  <study> map to the page's own elements, so a translation can move them
+ *  around the sentence without touching JSX. */
 function T({ k, values }: { k: MarkupKey; values?: Record<string, unknown> }) {
   return (
     <Trans
@@ -63,6 +73,14 @@ function T({ k, values }: { k: MarkupKey; values?: Record<string, unknown> }) {
       components={{
         code: <Code />,
         strong: <strong />,
+        study: (
+          <a
+            href={ETH_STUDY}
+            target="_blank"
+            rel="noreferrer"
+            className="text-ink underline underline-offset-2"
+          />
+        ),
       }}
     />
   );
@@ -97,6 +115,13 @@ export function FaqPage() {
           <p>{t("faq.agentsA1")}</p>
           <p>{t("faq.agentsA2")}</p>
           <p>{t("faq.agentsA3")}</p>
+        </Q>
+
+        <Q q={t("faq.agentsWhyQ")}>
+          <p>
+            <T k="faq.agentsWhyA1" />
+          </p>
+          <p>{t("faq.agentsWhyA2")}</p>
         </Q>
 
         <Q q={t("faq.stopQ")}>
