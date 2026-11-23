@@ -70,6 +70,9 @@ type SummaryInput struct {
 	Focus []inference.FocusItem
 
 	AgentsMDFound bool
+	// AgentsMDEmpty: the root AGENTS.md is blank, so the review ran on
+	// general rules only.
+	AgentsMDEmpty bool
 	// AgentsMDNested are the AGENTS.md files below the root the prompt
 	// carried, in path order, with their tokens; AgentsMDLeftOut the ones
 	// that applied to the PR but were left out, and why.
@@ -704,7 +707,17 @@ func renderFootnote(in SummaryInput) string {
 	p := in.Lang.Pick
 	var warn []string
 
-	if !in.AgentsMDFound {
+	if in.AgentsMDEmpty {
+		// Every review, so an AGENTS.md emptied by accident shows (user,
+		// 2026-11-23). Nested files may still carry tokens: the bloat line
+		// below counts them.
+		warn = append(warn, p(
+			"`AGENTS.md` ist leer: Review ohne Projektregeln. Invarianten und Konventionen dort machen es gezielter. ℹ️",
+			"`AGENTS.md` is empty: reviewed without project rules. Invariants and conventions there make it more targeted. ℹ️"))
+		if line := agentsMDBloatLine(in); line != "" {
+			warn = append(warn, line)
+		}
+	} else if !in.AgentsMDFound {
 		warn = append(warn, p(
 			"Tipp: Eine `AGENTS.md` mit projektspezifischen Review-Richtlinien im Repo-Root sorgt "+
 				"für gezielteres Feedback. 💡",

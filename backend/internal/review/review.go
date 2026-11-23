@@ -169,7 +169,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 
 	// 6. AGENTS.md required and absent. The prior commit stands: nothing of
 	// this push was reviewed, so the review that follows a fix covers it.
-	if repoInstructions == "" && r.cfg.RequireAgentsMD {
+	// An empty file is present: the review runs without project rules.
+	if repoInstructions == "" && !md.empty && r.cfg.RequireAgentsMD {
 		r.log.InfoContext(ctx, fmt.Sprintf(
 			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
 		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
@@ -515,7 +516,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		jiraDown:       jiraDown,
 		// One that could not be read is no reason for the "add an
 		// AGENTS.md" tip: it may well exist.
-		agentsMDFound: rootInstructions != "" || md.unknown || md.oversize > 0,
+		agentsMDFound: rootInstructions != "" || md.empty || md.unknown || md.oversize > 0,
+		agentsMDEmpty: rootInstructions == "" && md.empty,
 		totalFiles:    totalFiles,
 		diffAdded:     diffAdded,
 		diffRemoved:   diffRemoved,
@@ -744,6 +746,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		Summary:                    reviewSummary,
 		Focus:                      focus,
 		AgentsMDFound:              plan.agentsMDFound,
+		AgentsMDEmpty:              plan.agentsMDEmpty,
 		AgentsMDNested:             renderNested(plan.detail.AgentsMD.Nested),
 		AgentsMDLeftOut:            renderLeft(plan.detail.AgentsMD.LeftOut),
 		AgentsMDIncomplete:         plan.detail.AgentsMD.Incomplete,

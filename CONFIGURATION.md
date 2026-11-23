@@ -73,7 +73,7 @@ Everything here is a default a team block may replace.
 | `REVIEW_DIFF_MAX_EXTRA_LINES_DYNAMIC_CONTEXT` | `10` | How far above the window to search for the enclosing definition. |
 | `REVIEW_DIFF_ALLOW_DYNAMIC_CONTEXT` | `true` | Extend context to include the enclosing function or class. |
 | `REVIEW_TICKET_COMPLIANCE_CHECK` | `true` | Evaluate the PR against the Jira ticket's acceptance criteria. |
-| `REVIEW_REQUIRE_AGENTS_MD` | `true` | Skip the review, with a summary saying why, when the repo has no `AGENTS.md`. |
+| `REVIEW_REQUIRE_AGENTS_MD` | `true` | Skip the review, with a summary saying why, when the repo has no `AGENTS.md`. An empty file counts as present. |
 | `REVIEW_AGENTS_MD_WARN_TOKENS` | `4000` | Warn in the summary above this size. |
 | `REVIEW_AGENTS_MD_MAX_TOKENS` | `7000` | Skip the review above this size. |
 | `REVIEW_AGENTS_MD_CUSTOM_LINK` | *(empty)* | Extra link in the "too large" summary: `[Title](URL)` or a bare URL. |

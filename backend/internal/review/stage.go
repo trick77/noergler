@@ -101,6 +101,9 @@ type reviewPlan struct {
 	// parent), so the summary says the check was skipped or incomplete.
 	jiraDown      bool
 	agentsMDFound bool
+	// agentsMDEmpty: the root file is blank, the review ran without project
+	// rules; the footer says so on every review (user, 2026-11-23).
+	agentsMDEmpty bool
 	// totalFiles is every reviewable changed file, size-gated ones included:
 	// the set diffAdded and diffRemoved count, and the run row stores. The
 	// unreviewed ones (oversized, overBudget) are a subset of it.

@@ -11,6 +11,9 @@
  "accounting_truncated": {
   "out": "### PR review summary\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n### Issues and suggestions\n- 1 more new finding over the comment cap not posted.\n\n1. Still there\n2. Kept _(new)_\n\n### Overview\n_Not provided._\n\n---\n- _Tip: Add an `AGENTS.md` to your repository root with project-specific review guidelines for more targeted feedback. 💡_\n\n_`gpt-5.5-medium` · cost not reported_"
  },
+ "agents_empty": {
+  "out": "### PR review summary\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n### Issues and suggestions\nNone.\n\n### Overview\n_Not provided._\n\n---\n- _`AGENTS.md` is empty: reviewed without project rules. Invariants and conventions there make it more targeted. ℹ️_\n\n_`gpt-5.5-medium` · cost not reported_"
+ },
  "agents_no_breakdown": {
   "out": "### PR review summary\n\n### Recommendation\n**Approve ✅** — _No rationale provided._\n\n### Issues and suggestions\nNone.\n\n### Overview\n_Not provided._\n\n---\n_`gpt-5.5-medium` · cost not reported_"
  },

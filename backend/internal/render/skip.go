@@ -82,6 +82,8 @@ func agentsMDMissingSummaryEN() string {
 		"conventions, forbidden patterns, and areas the reviewer should focus on. " +
 		"An `AGENTS.md` in a subdirectory adds rules for that part of the repo; " +
 		"it does not replace the root one.\n" +
+		"- No project rules wanted? An empty `AGENTS.md` is enough; the review " +
+		"then runs on general rules.\n" +
 		"- Push the file to the PR branch (or merge it into the target branch) and " +
 		"the next webhook event on this PR will trigger a full review.\n"
 }

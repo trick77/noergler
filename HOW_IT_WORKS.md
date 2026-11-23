@@ -75,7 +75,10 @@ The pipeline refuses early and cheaply. In order:
 6. `AGENTS.md` exists, when it is required. Bitbucket failing to serve it
    on both branches (anything but a 404) is not "missing": the run is a
    fault, an error attempt with nothing posted, like a diff that would not
-   fetch.
+   fetch. An empty (or whitespace-only) file exists: the review runs on
+   general rules only and the footer says so on every review. The first
+   file read wins, so the PR branch's empty file is not replaced by the
+   target's rules.
 7. `AGENTS.md` is under the hard token limit. One over the file byte cap is
    too large to read at all and gets this notice, its tokens estimated.
 8. The PR's accumulated cost is under the cap. An `@mention` does not override
@@ -449,8 +452,8 @@ review's push sentence is not shown. Its sections, in order:
    integration links it as an issue key, to an issue that does not exist.
    The model's prose elsewhere in the summary and in inline comments spans
    the same labels in place
-10. A footer: a bullet for each thing the author can act on (no AGENTS.md or
-   AGENTS.md files over their warn size together, nested ones applied or
+10. A footer: a bullet for each thing the author can act on (no AGENTS.md,
+   an empty one, or AGENTS.md files over their warn size together, nested ones applied or
    left out, no ticket while Jira is on, Jira unavailable so
    the ticket check was skipped or the parent went unchecked, files not reviewed or
    reviewed without full context), then one line of model, files, lines,

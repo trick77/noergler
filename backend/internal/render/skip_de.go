@@ -46,6 +46,8 @@ func AgentsMDMissingSummary(l lang.Lang) string {
 		"verbotene Muster und Schwerpunkte für das Review beschreibt. " +
 		"Eine `AGENTS.md` in einem Unterordner ergänzt Regeln für diesen Teil des Repos; " +
 		"die im Root ersetzt sie nicht.\n" +
+		"- Keine Projektregeln gewünscht? Eine leere `AGENTS.md` genügt; das Review " +
+		"läuft dann mit allgemeinen Regeln.\n" +
 		"- Die Datei auf den PR-Branch pushen (oder in den Ziel-Branch mergen); " +
 		"das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
 }

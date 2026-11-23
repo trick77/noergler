@@ -172,6 +172,13 @@ func summaryCases() map[string]SummaryInput {
 	agentsWarnOff.AgentsMDWarnTokens = 0
 	cases["agents_warn_disabled"] = agentsWarnOff
 
+	// An empty AGENTS.md: the footer says the review had no project rules,
+	// never the "add an AGENTS.md" tip.
+	agentsEmpty := base()
+	agentsEmpty.AgentsMDFound = true
+	agentsEmpty.AgentsMDEmpty = true
+	cases["agents_empty"] = agentsEmpty
+
 	tNoCompliance := base()
 	tNoCompliance.Ticket = testTicket("ABC-1", "Do the thing", "")
 	tNoCompliance.JiraEnabled = true

@@ -519,6 +519,62 @@ func TestAgentsMDGates(t *testing.T) {
 		}
 	})
 
+	// An empty file is a team saying "no rules": present, reviewed on
+	// general rules, and the footer says so on every review.
+	for name, body := range map[string]string{"empty": "", "whitespace only": "  \n\t\n"} {
+		t.Run(name+" reviews without project rules", func(t *testing.T) {
+			h := newHarness(t, func(h *harness) { h.bb.files["src1:AGENTS.md"] = body })
+
+			h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+			if len(h.llm.Reviews) != 1 {
+				t.Fatal("an empty AGENTS.md must not stop the review")
+			}
+			var footer bool
+			for _, p := range h.bb.Posted {
+				if strings.Contains(p.Text, "no `AGENTS.md` found") {
+					t.Errorf("an empty AGENTS.md is not missing: %q", p.Text)
+				}
+				footer = footer || strings.Contains(p.Text, "`AGENTS.md` is empty")
+			}
+			if !footer {
+				t.Errorf("the summary must say AGENTS.md is empty, got %+v", h.bb.Posted)
+			}
+		})
+	}
+
+	// The PR branch's empty file is its answer: the target's rules do not
+	// come back through the fallback.
+	t.Run("empty on the PR branch wins over the target", func(t *testing.T) {
+		h := newHarness(t, func(h *harness) {
+			h.bb.files["src1:AGENTS.md"] = "\n"
+			h.bb.files["master:AGENTS.md"] = "# Target rules\n"
+		})
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+		if len(h.llm.Reviews) != 1 {
+			t.Fatal("review did not run")
+		}
+		if strings.Contains(h.llm.Reviews[0].Prompt, "# Target rules") {
+			t.Error("the PR branch's empty AGENTS.md must win over the target's")
+		}
+	})
+
+	// Missing on the PR branch, empty on the target: present all the same.
+	t.Run("empty on the target alone is present", func(t *testing.T) {
+		h := newHarness(t, func(h *harness) {
+			delete(h.bb.files, "src1:AGENTS.md")
+			h.bb.files["master:AGENTS.md"] = ""
+		})
+
+		h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+		if len(h.llm.Reviews) != 1 {
+			t.Error("an empty AGENTS.md on the target branch must not stop the review")
+		}
+	})
+
 	// Not required: the review goes on without it, as before.
 	t.Run("unreadable and not required reviews", func(t *testing.T) {
 		h := newHarness(t, func(h *harness) {

@@ -426,7 +426,7 @@ If you edit the templates, preserve this ordering: keep new stable rules above t
 
 Drop an `AGENTS.md` file in the repository root to provide project-specific review guidelines. noergler automatically picks it up from the PR source branch (falling back to the target branch) and injects the content into the review prompt. Use it to tell the reviewer about project conventions, forbidden patterns, or areas to focus on.
 
-By default, reviews are **gated** on the presence of `AGENTS.md` — without one, noergler skips the review and posts a short summary comment explaining why. To review PRs without an `AGENTS.md`, set `REVIEW_REQUIRE_AGENTS_MD=false`.
+By default, reviews are **gated** on the presence of `AGENTS.md` — without one, noergler skips the review and posts a short summary comment explaining why. A team that wants no project rules commits an empty `AGENTS.md`: the review then runs on general rules only, and its footer says so. To review PRs without an `AGENTS.md`, set `REVIEW_REQUIRE_AGENTS_MD=false`.
 
 The review summary reports how many tokens `AGENTS.md` consumes against a configurable soft limit (`REVIEW_AGENTS_MD_WARN_TOKENS`, default `4000`). When the file exceeds that limit, the summary flags it as a **context bloat** risk so you know to trim it. Reviews still run either way — this is a warning, not a hard cap.
 

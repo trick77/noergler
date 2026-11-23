@@ -394,10 +394,14 @@ func (r *Reviewer) prDescription(ctx context.Context, prTag string, pr webhook.P
 }
 
 // repoInstructions is AGENTS.md as fetchRepoInstructions found it. text is
-// the first non-blank one; when there is none, unknown and oversize say why
-// that is not "missing".
+// the first one read; when there is none, empty, unknown and oversize say
+// why that is not "missing".
 type repoInstructions struct {
 	text string
+	// empty: the first file read is blank. A team that wants no rules
+	// commits an empty file (user, 2026-11-23: "wenn jemand keins will,
+	// dann will er keins"): the review runs on general rules only.
+	empty bool
 	// unknown: a read failed for a reason other than a 404 or the byte cap
 	// (a 5xx, a timeout, a refused token). The file may well exist.
 	unknown bool
@@ -408,7 +412,9 @@ type repoInstructions struct {
 
 // fetchRepoInstructions reads AGENTS.md from the PR branch, falling back to
 // the target branch, as before, when the PR branch's is missing, oversized or
-// unreadable: the target's file is a better guide than none.
+// unreadable: the target's file is a better guide than none. A blank file is
+// an answer, not a miss: the PR branch's empty file wins over the target's
+// rules, as its content would (user, 2026-11-23).
 func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fromCommit, toDisplayID string) repoInstructions {
 	var out repoInstructions
 	for _, ref := range []string{fromCommit, toDisplayID} {
@@ -437,10 +443,15 @@ func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fro
 			out.unknown = true
 			continue
 		}
-		if strings.TrimSpace(content) != "" {
-			r.log.InfoContext(ctx, "Loaded AGENTS.md from ref "+ref)
-			return repoInstructions{text: content}
+		if strings.TrimSpace(content) == "" {
+			// unknown and oversize stay: a PR branch file that could not be
+			// read may hold rules, so the guards treat it as before.
+			r.log.InfoContext(ctx, "Empty AGENTS.md at ref "+ref+": no project rules")
+			out.empty = true
+			return out
 		}
+		r.log.InfoContext(ctx, "Loaded AGENTS.md from ref "+ref)
+		return repoInstructions{text: content}
 	}
 	return out
 }
