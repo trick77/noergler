@@ -151,6 +151,10 @@ paths:
                 summary: No Bitbucket tasks (SNAPSHOT dependency, blocking rules)
                 value:
                   create_tasks: false
+              reviewMd:
+                summary: Keep the review rules in REVIEW.md instead of AGENTS.md
+                value:
+                  agents_md_name: REVIEW.md
       responses:
         "200":
           description: The team as it is after the change.
@@ -492,7 +496,7 @@ components:
     TeamView:
       type: object
       additionalProperties: false
-      required: [team, projects, auto_review_authors, ignore_authors, ignore_author_globs, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, create_tasks, bitbucket_account, jira_account]
+      required: [team, projects, auto_review_authors, ignore_authors, ignore_author_globs, exclude_repos, exclude_source_branches, exclude_target_branches, use_pr_description, create_tasks, agents_md_name, bitbucket_account, jira_account]
       properties:
         team:
           type: string
@@ -571,6 +575,17 @@ components:
             True for every team. Off means off: no task is posted, read or
             resolved, an open one stays, and a blocking finding is posted as
             a plain comment.
+        agents_md_name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          description: &agentsMDName |
+            The file the team keeps its review rules under, in the repository
+            root and in every subdirectory: `AGENTS.md` unless the team chose
+            another, e.g. `REVIEW.md`. A plain file name, never a path. Only
+            this name is read, never `AGENTS.md` beside it. Renamed before the
+            file is, the rules are missing: the review is skipped where the
+            file is required, and open blocking tasks are resolved as for a
+            deleted file.
         bitbucket_account: { $ref: "#/components/schemas/BitbucketAccount" }
         jira_account: { $ref: "#/components/schemas/JiraAccount" }
         unreachable_claims:
@@ -682,6 +697,10 @@ components:
         create_tasks:
           type: [boolean, "null"]
           description: *createTasks
+        agents_md_name:
+          type: [string, "null"]
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          description: *agentsMDName
 
     OnboardRequest:
       type: object

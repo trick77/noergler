@@ -1,6 +1,7 @@
 package review
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -63,8 +64,9 @@ func (r *Reviewer) weighDispute(ctx context.Context, j *replyJob, rep inference.
 		match = 0
 	}
 	ruledOut := func() {
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s matches dispute signal %d, which AGENTS.md already states: the review raised a finding AGENTS.md rules out",
-			j.prTag, j.where, j.signalIDs[match-1]))
+		name := cmp.Or(j.mdName, r.mdName())
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: reply on finding %s matches dispute signal %d, which %s already states: the review raised a finding %s rules out",
+			j.prTag, j.where, j.signalIDs[match-1], name, name))
 	}
 	if line == "" {
 		if match > 0 {
@@ -174,11 +176,12 @@ func (r *Reviewer) disputeStatement(j *replyJob, o *signalOccurrence) string {
 	}
 	window := render.PluralIn(j.lang, r.cfg.DisputeSignalWindowDays, "Tag", "Tagen", "day", "days")
 	authors := render.PluralIn(j.lang, o.authors, "Autor", "Autoren", "author", "authors") //nolint:misspell // German "Autor", not a typo of "Author"
+	name := cmp.Or(j.mdName, r.mdName())
 	head := j.lang.Pick(
-		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%s). Vorschlag für `AGENTS.md`, damit das künftig nicht mehr bemängelt wird:",
-			o.prs, window, list, authors),
-		fmt.Sprintf("This is the %s PR within %s disputing this for the same reason (%s%s). Proposed `AGENTS.md` change, so it is not raised again:",
-			ordinalEN(o.prs), window, list, authors))
+		fmt.Sprintf("Das ist der %d. PR innert %s mit diesem Einwand (%s%s). Vorschlag für `%s`, damit das künftig nicht mehr bemängelt wird:",
+			o.prs, window, list, authors, name),
+		fmt.Sprintf("This is the %s PR within %s disputing this for the same reason (%s%s). Proposed `%s` change, so it is not raised again:",
+			ordinalEN(o.prs), window, list, authors, name))
 	fence := codeFence(o.rule)
 	return "\n\n" + head + "\n\n" + fence + "markdown\n" + o.rule + "\n" + fence
 }

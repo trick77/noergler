@@ -1,6 +1,7 @@
 package review
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/trick77/noergler/internal/bitbucket"
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/diff"
 	"github.com/trick77/noergler/internal/render"
 	"github.com/trick77/noergler/internal/store"
@@ -51,10 +53,13 @@ type nestedAgentsMD struct {
 	// Dir is its directory, with a trailing slash ("services/billing/").
 	Dir     string
 	Content string
+	// Name is the team's rules file name the lookup read (AGENTS.md unless
+	// the team chose another).
+	Name string
 }
 
 // Path is the file's path in the repo.
-func (n nestedAgentsMD) Path() string { return n.Dir + "AGENTS.md" }
+func (n nestedAgentsMD) Path() string { return n.Dir + cmp.Or(n.Name, config.DefaultAgentsMDName) }
 
 // prPaths are the paths a diff names.
 func prPaths(diffs ...string) []string {
@@ -115,8 +120,9 @@ type nestedProbe struct {
 	oversize int
 }
 
-// nestedMemo is each commit's probes, by "project/repo@commit" and
-// directory. A commit never changes, so an answer holds for every later
+// nestedMemo is each commit's probes, by "project/repo@commit:name" and
+// directory. The name is in the key: a team that renames its rules file
+// must not get the old name's answers for the same commit. A commit never changes, so an answer holds for every later
 // lookup at it (a finding reply, a Q&A, a retry) and never for another
 // commit: a file added or removed is a new head, probed afresh, whether
 // noergler saw the commit that did it or not.
@@ -150,16 +156,16 @@ func (c *nestedMemo) put(key, dir string, p nestedProbe) {
 	c.m[key][dir] = p
 }
 
-// probeNested reads one directory's AGENTS.md at a commit, through the
+// probeNested reads one directory's rules file (name) at a commit, through the
 // memo. ok is false for a read that failed for a reason other than a 404:
 // logged, not remembered, so the next lookup at the same commit reads
 // again.
-func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag, dir string) (p nestedProbe, ok bool) {
-	key := project + "/" + repo + "@" + commit
+func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag, dir, name string) (p nestedProbe, ok bool) {
+	key := project + "/" + repo + "@" + commit + ":" + name
 	if p, held := r.nestedMemo.get(key, dir); held {
 		return p, true
 	}
-	file := dir + "AGENTS.md"
+	file := dir + name
 	content, err := r.bitbucket.FetchFileContent(ctx, project, repo, commit, file)
 	var status *bitbucket.StatusError
 	switch {
@@ -169,7 +175,7 @@ func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag
 			r.log.WarnContext(ctx, fmt.Sprintf("%s: %s not read, reviewing without it: %v", prTag, file, err))
 		}
 		return nestedProbe{}, false
-	case strings.TrimSpace(content) == "":
+	case blankRules(content):
 	case len(content) > nestedAgentsMaxBytes:
 		p.oversize = len(content)
 	default:
@@ -192,22 +198,24 @@ func (r *Reviewer) probeNested(ctx context.Context, project, repo, commit, prTag
 // probed (render.LookupUnreadable over render.LookupProbeCap), "" when all
 // were: never a list of paths, since most candidates hold no file. The root
 // rules still hold, and the next run may read the rest.
-func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag string, paths []string) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
-	return r.lookupNested(ctx, project, repo, commit, prTag, paths, false)
+// name is the rules file name the run took once (repoInstructions.name), so
+// the root and the nested files of one run never differ in name.
+func (r *Reviewer) fetchNestedAgentsMD(ctx context.Context, project, repo, commit, prTag, name string, paths []string) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
+	return r.lookupNested(ctx, project, repo, commit, prTag, name, paths, false)
 }
 
 // lookupNested is fetchNestedAgentsMD; quiet leaves out the lines about
 // what was found, cut or left out, for a lookup that only checks a rule
 // (stillMarked): they would repeat the prompt's per task and read as if
 // the files went to the model. A failed read is logged either way.
-func (r *Reviewer) lookupNested(ctx context.Context, project, repo, commit, prTag string, paths []string, quiet bool) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
+func (r *Reviewer) lookupNested(ctx context.Context, project, repo, commit, prTag, name string, paths []string, quiet bool) (found []nestedAgentsMD, left []store.AgentsMDLeft, incomplete string) {
 	if commit == "" {
 		return nil, nil, ""
 	}
 	dirs, cut := nestedCandidates(paths)
 	if cut > 0 {
 		if !quiet {
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for an AGENTS.md (cap %d)", prTag, cut, nestedAgentsProbes))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: %d director(ies) not probed for a %s (cap %d)", prTag, cut, name, nestedAgentsProbes))
 		}
 		incomplete = render.LookupProbeCap
 	}
@@ -216,21 +224,21 @@ probe:
 		if ctx.Err() != nil {
 			return nil, nil, ""
 		}
-		p, ok := r.probeNested(ctx, project, repo, commit, prTag, dir)
+		p, ok := r.probeNested(ctx, project, repo, commit, prTag, dir, name)
 		switch {
 		case !ok:
 			if rest := len(dirs) - i - 1; rest > 0 {
-				r.log.WarnContext(ctx, fmt.Sprintf("%s: nested AGENTS.md lookup stopped, %d director(ies) not probed", prTag, rest))
+				r.log.WarnContext(ctx, fmt.Sprintf("%s: nested %s lookup stopped, %d director(ies) not probed", prTag, name, rest))
 			}
 			incomplete = render.LookupUnreadable
 			break probe
 		case p.oversize > 0:
 			if !quiet {
-				r.log.WarnContext(ctx, fmt.Sprintf("%s: %sAGENTS.md left out: %d bytes, over %d", prTag, dir, p.oversize, nestedAgentsMaxBytes))
+				r.log.WarnContext(ctx, fmt.Sprintf("%s: %s%s left out: %d bytes, over %d", prTag, dir, name, p.oversize, nestedAgentsMaxBytes))
 			}
-			left = append(left, store.AgentsMDLeft{Path: dir + "AGENTS.md", Reason: render.LeftOversize})
+			left = append(left, store.AgentsMDLeft{Path: dir + name, Reason: render.LeftOversize})
 		case p.content != "":
-			found = append(found, nestedAgentsMD{Dir: dir, Content: p.content})
+			found = append(found, nestedAgentsMD{Dir: dir, Content: p.content, Name: name})
 		}
 	}
 	slices.SortFunc(found, func(a, b nestedAgentsMD) int { return strings.Compare(a.Dir, b.Dir) })

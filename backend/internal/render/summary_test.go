@@ -179,6 +179,11 @@ func summaryCases() map[string]SummaryInput {
 	agentsEmpty.AgentsMDEmpty = true
 	cases["agents_empty"] = agentsEmpty
 
+	// Empty root, rules below it: not "without project rules".
+	agentsEmptyNested := agentsEmpty
+	agentsEmptyNested.AgentsMDNested = []AgentsMDFile{{Path: "svc/AGENTS.md", Tokens: 200}}
+	cases["agents_empty_nested"] = agentsEmptyNested
+
 	tNoCompliance := base()
 	tNoCompliance.Ticket = testTicket("ABC-1", "Do the thing", "")
 	tNoCompliance.JiraEnabled = true
@@ -703,13 +708,45 @@ func TestSummaryBloatCountsNested(t *testing.T) {
 	}
 }
 
+// A team that chose another rules file name reads it on every footer line
+// about the file, never AGENTS.md.
+func TestSummaryNamesTheTeamsFile(t *testing.T) {
+	cases := map[string]func(*SummaryInput){
+		"tip":    func(*SummaryInput) {},
+		"empty":  func(in *SummaryInput) { in.AgentsMDFound, in.AgentsMDEmpty = true, true },
+		"bloat":  func(in *SummaryInput) { in.AgentsMDFound, in.AgentsMDTokens = true, 9000 },
+		"lookup": func(in *SummaryInput) { in.AgentsMDFound, in.AgentsMDIncomplete = true, LookupProbeCap },
+		"left out": func(in *SummaryInput) {
+			in.AgentsMDFound, in.AgentsMDLeftOut = true, []AgentsMDLeft{{Path: "a/REVIEW.md", Reason: LeftTokenLimit}}
+		},
+		"nested": func(in *SummaryInput) {
+			in.AgentsMDFound, in.AgentsMDNested = true, []AgentsMDFile{{Path: "a/REVIEW.md", Tokens: 1}}
+		},
+		"bloat sum": func(in *SummaryInput) {
+			in.AgentsMDFound, in.AgentsMDTokens, in.AgentsMDNested = true, 3000, []AgentsMDFile{{Path: "a/REVIEW.md", Tokens: 3000}}
+		},
+	}
+	for name, tweak := range cases {
+		for _, l := range []lang.Lang{lang.EN, lang.DE} {
+			in := base()
+			in.Lang = l
+			in.AgentsMDName = "REVIEW.md"
+			tweak(&in)
+			got := Summary(in)
+			if !strings.Contains(got, "REVIEW.md") || strings.Contains(got, "AGENTS.md") {
+				t.Errorf("%s %s: want REVIEW.md only:\n%s", name, l, got)
+			}
+		}
+	}
+}
+
 // A nested lookup cut short is one line, never a list of paths.
 func TestSummarySaysNestedLookupIncomplete(t *testing.T) {
 	in := base()
 	in.AgentsMDFound = true
 	for code, want := range map[string]string{
 		LookupUnreadable: "Lookup of AGENTS.md below the root stopped (Bitbucket error) ⚠️",
-		LookupProbeCap:   "Not every directory checked for an AGENTS.md (too many in this PR) ⚠️",
+		LookupProbeCap:   "Not every directory checked for AGENTS.md (too many in this PR) ⚠️",
 	} {
 		in.AgentsMDIncomplete = code
 		if got := Summary(in); !strings.Contains(got, want) {

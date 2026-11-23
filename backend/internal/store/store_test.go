@@ -1103,8 +1103,12 @@ func TestSettings_RoundTrip(t *testing.T) {
 	}
 	all, _ := s.GetAllSettings(ctx)
 	if !reflect.DeepEqual(all["platform"], TeamSettings{AutoReviewAuthors: []string{"a"}, IgnoreAuthors: []string{}, ExcludeRepos: []string{"*-infra"},
-		ExcludeSourceBranches: []string{"dependabot/*"}, ExcludeTargetBranches: []string{}}) {
+		ExcludeSourceBranches: []string{"dependabot/*"}, ExcludeTargetBranches: []string{}, AgentsMDName: "AGENTS.md"}) {
 		t.Errorf("settings = %+v", all["platform"])
+	}
+	_ = s.PutSettings(ctx, "platform", TeamSettings{AgentsMDName: "REVIEW.md"}, "jan")
+	if all, _ = s.GetAllSettings(ctx); all["platform"].AgentsMDName != "REVIEW.md" {
+		t.Errorf("agents_md_name not stored: %+v", all["platform"])
 	}
 	_ = s.PutSettings(ctx, "platform", TeamSettings{AutoReviewAuthors: []string{"b"}, ExcludeRepos: []string{}}, "jan")
 	all, _ = s.GetAllSettings(ctx)
@@ -1135,6 +1139,13 @@ func TestSettings_PRDescriptionDefaultsOn(t *testing.T) {
 	}
 	if !all["old"].CreateTasks {
 		t.Errorf("create_tasks = false on a row that never set it")
+	}
+	if all["old"].AgentsMDName != "AGENTS.md" {
+		t.Errorf("agents_md_name = %q on a row that never set it", all["old"].AgentsMDName)
+	}
+	// A path is refused by the database too, not only by the API.
+	if _, err := s.pool.Exec(ctx, `UPDATE team_settings SET agents_md_name = 'docs/REVIEW.md' WHERE team_slug = 'old'`); err == nil {
+		t.Error("a path was stored as agents_md_name")
 	}
 	_ = s.PutSettings(ctx, "old", TeamSettings{UsePRDescription: true}, "jan")
 	if all, _ = s.GetAllSettings(ctx); all["old"].CreateTasks {

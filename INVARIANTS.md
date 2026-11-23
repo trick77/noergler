@@ -500,6 +500,11 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   author lists onto the live Reviewer (it copies `config.Review` by value),
   not `exclude_repos` or the branch lists; `Reconcile` runs before any Reviewer is built; the
   onboarding orchestrators never mutate their team.
+- `agents_md_name`: read through `Reviewer.mdName`, never `cfg` (the PUT
+  mirrors it). The nested memo key carries the name: a rename at the same
+  commit must not answer with the old name's files. One name per team,
+  root and subdirectories alike, never a fallback to `AGENTS.md` (user,
+  2026-11-23).
 - Self-service handlers and `api/openapi.yaml` change together. Nullable =
   `type: [x, "null"]`, never `oneOf` with null.
 - Dashboard: unauthenticated by design (the ingress is the boundary).

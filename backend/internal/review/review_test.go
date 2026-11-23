@@ -521,7 +521,7 @@ func TestAgentsMDGates(t *testing.T) {
 
 	// An empty file is a team saying "no rules": present, reviewed on
 	// general rules, and the footer says so on every review.
-	for name, body := range map[string]string{"empty": "", "whitespace only": "  \n\t\n"} {
+	for name, body := range map[string]string{"empty": "", "whitespace only": "  \n\t\n", "byte-order mark only": string(rune(0xFEFF)) + "\n"} {
 		t.Run(name+" reviews without project rules", func(t *testing.T) {
 			h := newHarness(t, func(h *harness) { h.bb.files["src1:AGENTS.md"] = body })
 

@@ -122,6 +122,11 @@ type Review struct {
 	// SNAPSHOT task and a blocking rule's (user, 2026-11-15: on for every
 	// team). Team API only, like UsePRDescription; App.CreateTasks gates it.
 	CreateTasks bool
+	// AgentsMDName is the file name the team keeps its review rules under,
+	// in the root and in every subdirectory: AGENTS.md unless the team
+	// chose another, e.g. REVIEW.md (user, 2026-11-23). Team API only, like
+	// UsePRDescription. Never a path: no "/".
+	AgentsMDName string
 	// DisputeSignalWindowDays is how long one dispute of a finding counts
 	// toward its dispute signal; DisputeSignalThreshold the distinct PRs
 	// inside that window at which the finding-thread answer proposes the
@@ -327,6 +332,15 @@ func ModelLabel(model, effort string) string {
 // field are all this string.
 var TeamSlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// DefaultAgentsMDName is the rules file a team reads unless it chose
+// another name: the cross-tool standard most coding agents read.
+const DefaultAgentsMDName = "AGENTS.md"
+
+// AgentsMDNameRE is a rules file name a team may choose: a plain file name
+// (no directory, no leading dot), so the same name is looked up in the root
+// and in every subdirectory. ASCII on purpose: a Bitbucket path, not prose.
+var AgentsMDNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
 // Queue sizes the review queue's inference pool.
 //
 // Prepare (Bitbucket fetches, prompt assembly) and post stay on the single
@@ -515,6 +529,7 @@ func LoadInstance(lookup func(string) (string, bool)) (*App, error) {
 			TicketComplianceCheck:           r.Bool("REVIEW_TICKET_COMPLIANCE_CHECK", true),
 			UsePRDescription:                true,
 			CreateTasks:                     true,
+			AgentsMDName:                    DefaultAgentsMDName,
 			RequireAgentsMD:                 r.Bool("REVIEW_REQUIRE_AGENTS_MD", true),
 			AgentsMDWarnTokens:              r.Int("REVIEW_AGENTS_MD_WARN_TOKENS", 4000),
 			AgentsMDMaxTokens:               r.Int("REVIEW_AGENTS_MD_MAX_TOKENS", 7000),

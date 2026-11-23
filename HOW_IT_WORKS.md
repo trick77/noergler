@@ -91,6 +91,15 @@ instead of skipping past it.
 Every skip that is a stable state of the PR (opt-out branch, missing or oversized
 `AGENTS.md`, cost cap) posts a summary saying why. Guards 1 to 4 post nothing.
 
+**The file's name.** A team may keep its rules under another name
+(`agents_md_name`, e.g. `REVIEW.md`): every read below, root, subdirectories
+and the target branch's blocking rules, then looks for that name only. One
+run reads one name, taken once at its start. Every PR comment about the file
+names it, as do the run page's file rows; the dashboard's labels and skip
+reasons stay generic ("AGENTS.md missing"). Renamed before the file is, the rules
+are missing: guard 6 skips, and open blocking tasks resolve as for a
+deleted file.
+
 **AGENTS.md below the root.** Guards 6 and 7 read the root file only. Once
 the diff is known, the directories of the whole PR's changed files (the full
 cumulative diff on an incremental review, unfiltered) and every ancestor of

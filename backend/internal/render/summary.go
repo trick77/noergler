@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/trick77/noergler/internal/config"
 	"github.com/trick77/noergler/internal/inference"
 	"github.com/trick77/noergler/internal/jira"
 	"github.com/trick77/noergler/internal/lang"
@@ -70,6 +71,9 @@ type SummaryInput struct {
 	Focus []inference.FocusItem
 
 	AgentsMDFound bool
+	// AgentsMDName is the team's rules file name, "" for the default
+	// (AGENTS.md); every line about the file names it so.
+	AgentsMDName string
 	// AgentsMDEmpty: the root AGENTS.md is blank, so the review ran on
 	// general rules only.
 	AgentsMDEmpty bool
@@ -563,8 +567,8 @@ func renderIssues(in SummaryInput) string {
 	if taskCount > 0 {
 		lines = append(lines, "- "+PluralIn(in.Lang, taskCount,
 			"offener blockierender Task", "offene blockierende Tasks", "open blocking task", "open blocking tasks")+
-			p(": Der Merge wartet, bis sie erledigt sind (blockierende Regeln aus AGENTS.md).",
-				": the merge waits until they are resolved (blocking rules from AGENTS.md)."))
+			fmt.Sprintf(p(": Der Merge wartet, bis sie erledigt sind (blockierende Regeln aus %s).",
+				": the merge waits until they are resolved (blocking rules from %s)."), in.mdName()))
 	}
 	if securityCount > 0 {
 		lines = append(lines, fmt.Sprintf(p("- %s 🔒 — sorgfältig prüfen", "- %s 🔒 — review carefully"),
@@ -710,19 +714,26 @@ func renderFootnote(in SummaryInput) string {
 	if in.AgentsMDEmpty {
 		// Every review, so an AGENTS.md emptied by accident shows (user,
 		// 2026-11-23). Nested files may still carry tokens: the bloat line
-		// below counts them.
-		warn = append(warn, p(
-			"`AGENTS.md` ist leer: Review ohne Projektregeln. Invarianten und Konventionen dort machen es gezielter. ℹ️",
-			"`AGENTS.md` is empty: reviewed without project rules. Invariants and conventions there make it more targeted. ℹ️"))
+		// below counts them, and "without project rules" would be wrong.
+		line := p(
+			"`%s` ist leer: Review ohne Projektregeln. Invarianten und Konventionen dort machen es gezielter. ℹ️",
+			"`%s` is empty: reviewed without project rules. Invariants and conventions there make it more targeted. ℹ️")
+		if len(in.AgentsMDNested) > 0 {
+			line = p(
+				"`%s` im Root ist leer: Projektregeln nur aus Unterordnern. Invarianten und Konventionen dort machen das Review gezielter. ℹ️",
+				"Root `%s` is empty: project rules from subdirectories only. Invariants and conventions there make the review more targeted. ℹ️")
+		}
+		warn = append(warn, fmt.Sprintf(line, in.mdName()))
 		if line := agentsMDBloatLine(in); line != "" {
 			warn = append(warn, line)
 		}
 	} else if !in.AgentsMDFound {
-		warn = append(warn, p(
-			"Tipp: Eine `AGENTS.md` mit projektspezifischen Review-Richtlinien im Repo-Root sorgt "+
-				"für gezielteres Feedback. 💡",
-			"Tip: Add an `AGENTS.md` to your repository root with project-specific "+
-				"review guidelines for more targeted feedback. 💡"))
+		warn = append(warn, fmt.Sprintf(p(
+			"Tipp: Eine `%s` mit dem, was im Code nicht steht (Invarianten, Konventionen, Entscheide), "+
+				"macht das Review gezielter. 💡",
+			"Tip: `%s` with what the code does not show (invariants, conventions, decisions) "+
+				"makes the review more targeted. 💡"),
+			in.mdName()))
 	} else if line := agentsMDBloatLine(in); line != "" {
 		warn = append(warn, line)
 	}
@@ -744,18 +755,18 @@ func renderFootnote(in SummaryInput) string {
 			}
 		}
 		if len(paths) > 0 {
-			warn = append(warn, leftOutLabel(in.Lang, reason)+codeList(paths)+" ⚠️")
+			warn = append(warn, leftOutLabel(in.Lang, reason, in.mdName())+codeList(paths)+" ⚠️")
 		}
 	}
 	// A lookup cut short is one line, never the paths it missed: most
 	// candidate directories hold no file at all.
 	switch in.AgentsMDIncomplete {
 	case LookupUnreadable:
-		warn = append(warn, p("Suche nach AGENTS.md in Unterordnern abgebrochen (Bitbucket-Fehler) ⚠️",
-			"Lookup of AGENTS.md below the root stopped (Bitbucket error) ⚠️"))
+		warn = append(warn, fmt.Sprintf(p("Suche nach %s in Unterordnern abgebrochen (Bitbucket-Fehler) ⚠️",
+			"Lookup of %s below the root stopped (Bitbucket error) ⚠️"), in.mdName()))
 	case LookupProbeCap:
-		warn = append(warn, p("Nicht jeder Ordner auf eine AGENTS.md geprüft (zu viele Ordner im PR) ⚠️",
-			"Not every directory checked for an AGENTS.md (too many in this PR) ⚠️"))
+		warn = append(warn, fmt.Sprintf(p("Nicht jeder Ordner auf eine %s geprüft (zu viele Ordner im PR) ⚠️",
+			"Not every directory checked for %s (too many in this PR) ⚠️"), in.mdName()))
 	}
 	// Only when Jira is on: "Jira is not enabled" is true of every PR of the
 	// team and gives the author nothing to do.
@@ -885,12 +896,17 @@ const (
 	LookupUnreadable = "unreadable"
 )
 
-func leftOutLabel(l lang.Lang, reason string) string {
+func leftOutLabel(l lang.Lang, reason, name string) string {
 	if reason == LeftOversize {
 		return l.Pick("Nicht berücksichtigt (Datei zu gross): ", "Not used (file too large): ")
 	}
-	return l.Pick("Nicht berücksichtigt (über dem AGENTS.md-Token-Limit): ",
-		"Not used (over the AGENTS.md token limit): ")
+	return fmt.Sprintf(l.Pick("Nicht berücksichtigt (über dem %s-Token-Limit): ",
+		"Not used (over the %s token limit): "), name)
+}
+
+// mdName is the team's rules file name, AGENTS.md when none was given.
+func (in SummaryInput) mdName() string {
+	return cmp.Or(in.AgentsMDName, config.DefaultAgentsMDName)
 }
 
 // bloatNamed is how many files the bloat line names, largest first.
@@ -911,14 +927,14 @@ func agentsMDBloatLine(in SummaryInput) string {
 		return ""
 	}
 	if len(in.AgentsMDNested) == 0 {
-		return fmt.Sprintf(p("`AGENTS.md` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
-			"`AGENTS.md` takes ~%d of %d tokens (%d%%) — risk of context bloat, consider trimming ⚠️"),
-			tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens))
+		return fmt.Sprintf(p("`%s` belegt ~%d von %d Tokens (%d%%) — droht den Kontext aufzublähen, besser kürzen ⚠️",
+			"`%s` takes ~%d of %d tokens (%d%%) — risk of context bloat, consider trimming ⚠️"),
+			in.mdName(), tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens))
 	}
 	// A root not read (0 tokens) is nothing to trim: not named.
 	var files []AgentsMDFile
 	if in.AgentsMDTokens > 0 {
-		files = append(files, AgentsMDFile{Path: "AGENTS.md", Tokens: in.AgentsMDTokens})
+		files = append(files, AgentsMDFile{Path: in.mdName(), Tokens: in.AgentsMDTokens})
 	}
 	files = append(files, in.AgentsMDNested...)
 	slices.SortStableFunc(files, func(a, b AgentsMDFile) int { return b.Tokens - a.Tokens })
@@ -926,9 +942,9 @@ func agentsMDBloatLine(in SummaryInput) string {
 	for _, f := range files[:min(len(files), bloatNamed)] {
 		named = append(named, fmt.Sprintf("`%s` ~%d", f.Path, f.Tokens))
 	}
-	return fmt.Sprintf(p("`AGENTS.md`-Dateien belegen zusammen ~%d von %d Tokens (%d%%), am meisten: %s — droht den Kontext aufzublähen, besser kürzen ⚠️",
-		"`AGENTS.md` files take ~%d of %d tokens together (%d%%), largest: %s — risk of context bloat, consider trimming ⚠️"),
-		tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens), strings.Join(named, ", "))
+	return fmt.Sprintf(p("`%s`-Dateien belegen zusammen ~%d von %d Tokens (%d%%), am meisten: %s — droht den Kontext aufzublähen, besser kürzen ⚠️",
+		"`%s` files take ~%d of %d tokens together (%d%%), largest: %s — risk of context bloat, consider trimming ⚠️"),
+		in.mdName(), tokens, in.AgentsMDWarnTokens, pct(tokens, in.AgentsMDWarnTokens), strings.Join(named, ", "))
 }
 
 func diffParts(added, removed int) string {

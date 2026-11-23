@@ -330,6 +330,14 @@ function Configuration({
           <ConfigRow label={t("teams.excludedTargetBranches")}>
             {globs(team.exclude_target_branches)}
           </ConfigRow>
+          {/* Only a name the team chose: AGENTS.md is true of most teams. */}
+          {team.agents_md_name && team.agents_md_name !== "AGENTS.md" && (
+            <ConfigRow label={t("teams.agentsMDName")}>
+              <code className="font-mono text-[12px]">
+                {team.agents_md_name}
+              </code>
+            </ConfigRow>
+          )}
           {/* An empty auto-review list means every author is reviewed. */}
           <ConfigRow label={t("teams.autoReviewAuthors")}>
             {count(team.auto_review_authors, t("teams.allAuthors"))}

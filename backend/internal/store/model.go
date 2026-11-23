@@ -676,6 +676,9 @@ type TeamSettings struct {
 	ExcludeTargetBranches []string
 	UsePRDescription      bool
 	CreateTasks           bool
+	// AgentsMDName is the team's rules file name; "" writes the default,
+	// AGENTS.md.
+	AgentsMDName string
 }
 
 // claimRow is one team_claims row as the claim reads take it.

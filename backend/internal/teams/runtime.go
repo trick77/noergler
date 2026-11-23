@@ -8,6 +8,7 @@
 package teams
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -58,6 +59,7 @@ type Reviewer interface {
 	SetAuthorLists(auto, ignore []string)
 	SetUsePRDescription(on bool)
 	SetCreateTasks(on bool)
+	SetAgentsMDName(name string)
 }
 
 // Runtime is one enabled team at request time.
@@ -263,6 +265,7 @@ func (r *Runtime) UpdateSettings(merge func(store.TeamSettings) store.TeamSettin
 	r.Reviewer.SetAuthorLists(s.AutoReviewAuthors, s.IgnoreAuthors)
 	r.Reviewer.SetUsePRDescription(s.UsePRDescription)
 	r.Reviewer.SetCreateTasks(s.CreateTasks)
+	r.Reviewer.SetAgentsMDName(s.AgentsMDName)
 	return nil
 }
 
@@ -277,6 +280,7 @@ func settingsOf(t *config.Team) store.TeamSettings {
 		ExcludeTargetBranches: t.Review.ExcludeTargetBranches,
 		UsePRDescription:      t.Review.UsePRDescription,
 		CreateTasks:           t.Review.CreateTasks,
+		AgentsMDName:          cmp.Or(t.Review.AgentsMDName, config.DefaultAgentsMDName),
 	}
 }
 
@@ -288,4 +292,7 @@ func applySettings(t *config.Team, s store.TeamSettings) {
 	t.Review.ExcludeTargetBranches = s.ExcludeTargetBranches
 	t.Review.UsePRDescription = s.UsePRDescription
 	t.Review.CreateTasks = s.CreateTasks
+	// A row predating the column, or a fake store's zero value, reads "":
+	// the default, never an empty file name.
+	t.Review.AgentsMDName = cmp.Or(s.AgentsMDName, config.DefaultAgentsMDName)
 }

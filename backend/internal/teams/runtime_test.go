@@ -111,6 +111,7 @@ func TestRuntime_SettingsRoundTripsTheSnapshot(t *testing.T) {
 		AutoReviewAuthors: []string{"alice"},
 		IgnoreAuthors:     []string{"ci-bot"},
 		ExcludeRepos:      []string{"*-infra"},
+		AgentsMDName:      "REVIEW.md",
 	}
 	setSettings(rt, want)
 	var got store.TeamSettings
@@ -157,7 +158,8 @@ func TestRuntime_ConcurrentPartialUpdatesKeepBothFields(t *testing.T) {
 	}
 	<-done
 
-	want := store.TeamSettings{AutoReviewAuthors: []string{"alice"}, IgnoreAuthors: []string{"ci-bot"}}
+	// A team that never chose a name reads the default.
+	want := store.TeamSettings{AutoReviewAuthors: []string{"alice"}, IgnoreAuthors: []string{"ci-bot"}, AgentsMDName: "AGENTS.md"}
 	if got := settingsOf(rt.Team()); !reflect.DeepEqual(got, want) {
 		t.Errorf("runtime = %+v, want %+v", got, want)
 	}
@@ -241,7 +243,7 @@ func TestRuntime_SettingsWritersDoNotInterleave(t *testing.T) {
 	}
 	<-done
 
-	want := store.TeamSettings{IgnoreAuthors: []string{"ci-bot"}}
+	want := store.TeamSettings{IgnoreAuthors: []string{"ci-bot"}, AgentsMDName: "AGENTS.md"}
 	if got := settingsOf(rt.Team()); !reflect.DeepEqual(got, want) {
 		t.Errorf("runtime = %+v, want %+v", got, want)
 	}

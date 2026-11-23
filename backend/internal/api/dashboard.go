@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -770,6 +771,9 @@ type teamBody struct {
 	// The branch globs likewise: names of branches, not of people.
 	ExcludeSourceBranches []string `json:"exclude_source_branches"`
 	ExcludeTargetBranches []string `json:"exclude_target_branches"`
+	// AgentsMDName is the file the team keeps its review rules under (a
+	// file name, not a person). Absent for a disabled team.
+	AgentsMDName string `json:"agents_md_name,omitempty"`
 	// Model is the started client's label, `<profile>-<effort>`, the string
 	// every run records and the PR summary prints, so it is public already.
 	// The profile id, never the gateway alias: that is the operator's private
@@ -851,6 +855,7 @@ func (d Deps) teamsView(w http.ResponseWriter, r *http.Request) {
 				t.ExcludeRepos = append(t.ExcludeRepos, team.Review.ExcludeRepos...)
 				t.ExcludeSourceBranches = append(t.ExcludeSourceBranches, team.Review.ExcludeSourceBranches...)
 				t.ExcludeTargetBranches = append(t.ExcludeTargetBranches, team.Review.ExcludeTargetBranches...)
+				t.AgentsMDName = cmp.Or(team.Review.AgentsMDName, config.DefaultAgentsMDName)
 				if rt.LLM != nil {
 					t.Model = rt.LLM.Label()
 					t.ModelSource = "default"

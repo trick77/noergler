@@ -319,6 +319,50 @@ describe("RunPane", () => {
     ).toBe("services/payments/go.sum");
   });
 
+  // A blank rules file is there, not missing: the review ran without rules.
+  it("says an empty rules file is empty", async () => {
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        agents_md: {
+          found: false,
+          tokens: 0,
+          warn_tokens: 4000,
+          name: "REVIEW.md",
+          empty: true,
+        },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(
+      await screen.findByText("REVIEW.md is empty: no project rules"),
+    ).toBeDefined();
+    expect(screen.queryByText("missing")).toBeNull();
+  });
+
+  // A team that keeps its rules in REVIEW.md sees that name on the root row.
+  it("names the team's rules file", async () => {
+    serve(RUN, {
+      ...detail,
+      detail: {
+        ...record,
+        agents_md: {
+          found: true,
+          tokens: 1240,
+          warn_tokens: 4000,
+          name: "REVIEW.md",
+          nested: [{ path: "services/pay/REVIEW.md", tokens: 760 }],
+        },
+      },
+    });
+    render(<RunPane token={TOK} n={2} />);
+
+    expect(await screen.findByText("REVIEW.md")).toBeDefined();
+    expect(screen.getByText("services/pay/REVIEW.md")).toBeDefined();
+  });
+
   // The nested AGENTS.md files the prompt carried, with their tokens, and
   // the ones left out with why; the size row counts them all.
   it("lists the nested AGENTS.md files", async () => {

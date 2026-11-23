@@ -201,12 +201,12 @@ func (r *Reviewer) HandleMention(ctx context.Context, payload *webhook.Payload, 
 	}
 
 	// Unreadable: the answer goes on without it.
-	repoInstructions := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch()).text
+	md := r.fetchRepoInstructions(ctx, project, repo, pr.FromRef.LatestCommit, pr.ToRef.Branch())
 	// The nested ones for the PR's paths, as a review reads them.
-	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, pr.FromRef.LatestCommit, prTag, prPaths(rawDiff))
-	repoInstructions, _, left := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
+	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, pr.FromRef.LatestCommit, prTag, md.name, prPaths(rawDiff))
+	repoInstructions, _, left := withNested(md.text, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
 	if len(left) > 0 {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit: %s", prTag, strings.Join(left, ", ")))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the %s limit: %s", prTag, md.name, strings.Join(left, ", ")))
 	}
 	ticket, parent, jiraDown := r.fetchTicket(ctx, pr.FromRef.Branch(), pr.Title, prTag)
 	ticketContext := ticketContextFor(ticket, parent, jiraDown)

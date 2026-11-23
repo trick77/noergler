@@ -85,6 +85,12 @@ type AgentsMDFacts struct {
 	Found      bool `json:"found"`
 	Tokens     int  `json:"tokens"`
 	WarnTokens int  `json:"warn_tokens"`
+	// Name is the root file's name, the team's choice; absent on runs from
+	// before it was recorded, which read AGENTS.md.
+	Name string `json:"name,omitempty"`
+	// Empty: the root file is there but blank, so the review ran without
+	// its rules (Found is false then); the run page says empty, not missing.
+	Empty bool `json:"empty,omitempty"`
 	// Nested are the files below the root the prompt carried, in path
 	// order; LeftOut the ones that applied but were not carried, and why.
 	// Absent on runs from before they were recorded.

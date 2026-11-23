@@ -42,6 +42,8 @@ type fakeReviewer struct {
 	usePRDescription *bool
 	// createTasks is the same for the task switch.
 	createTasks *bool
+	// agentsMDName is the same for the rules file name.
+	agentsMDName *string
 }
 
 func (f *fakeReviewer) ReviewPullRequestStaged(context.Context, *webhook.Payload, string, bool, teams.Scheduler) bool {
@@ -78,6 +80,7 @@ func (f *fakeReviewer) IsAutoReviewAuthor(string) bool { return true }
 func (f *fakeReviewer) SetAuthorLists(_, _ []string)   {}
 func (f *fakeReviewer) SetUsePRDescription(on bool)    { f.usePRDescription = &on }
 func (f *fakeReviewer) SetCreateTasks(on bool)         { f.createTasks = &on }
+func (f *fakeReviewer) SetAgentsMDName(name string)    { f.agentsMDName = &name }
 func (f *fakeReviewer) String() string                 { return strings.Join(f.calls, ",") }
 
 // fakeQueue captures submissions without running a worker. Jobs are run on

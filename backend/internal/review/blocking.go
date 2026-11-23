@@ -103,7 +103,7 @@ func (r *Reviewer) logClaim(ctx context.Context, prTag string, f inference.Revie
 	case outcome == inference.BlockingUnknownRule:
 		// A known rule refused as unknown: a nested file's rule that does
 		// not cover this file (CheckBlocking).
-		rule += " (its AGENTS.md does not cover " + f.File + ")"
+		rule += " (its rules file does not cover " + f.File + ")"
 	}
 	conf := "none"
 	if f.Confidence != nil {
@@ -134,7 +134,9 @@ func taskDone(c *bitbucket.Comment) bool {
 // sibling module's file does not cover it. Anything not known for sure
 // (a failed read, a file over the byte cap, a cancelled run) keeps the
 // task: missing information is no removal.
-func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTag, commit string, existing []store.Finding,
+//
+// name is the run's rules file name, the one the target was read under.
+func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTag, commit, name string, existing []store.Finding,
 	rootMarked map[string]bool, known bool) []store.Finding {
 	if !r.tasksOn() || !known {
 		return existing
@@ -147,7 +149,7 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 			rootMarked[inference.NormalizeRule(*f.BlockingRule)] {
 			continue
 		}
-		if marked, why := r.stillMarked(ctx, key, prTag, commit, f.FilePath, inference.NormalizeRule(*f.BlockingRule)); marked || why != "" {
+		if marked, why := r.stillMarked(ctx, key, prTag, commit, name, f.FilePath, inference.NormalizeRule(*f.BlockingRule)); marked || why != "" {
 			if why != "" {
 				r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: rule %q kept, %s",
 					prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, *f.BlockingRule, why))
@@ -159,11 +161,11 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 		case bitbucket.Status(err) == http.StatusNotFound:
 			// Deleted: closed for this run, never stamped, as closeThreads does.
 			f.ClosedAt = &now
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: its rule left AGENTS.md, the task is deleted",
-				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: its rule left %s, the task is deleted",
+				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, name))
 		case err != nil:
-			r.log.WarnContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: its rule left AGENTS.md, resolve failed: %v, tried again next run",
-				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, err))
+			r.log.WarnContext(ctx, fmt.Sprintf("%s: task %d on %s:%d: its rule left %s, resolve failed: %v, tried again next run",
+				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, name, err))
 		default:
 			// Settled, and marked so the violation, if the model reports it
 			// under the rule's new wording, is posted as a task again
@@ -171,8 +173,8 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 			safeDBErr(ctx, r.log, "MarkRuleRemoved", func() error { return r.store.MarkRuleRemoved(ctx, f.ID) })
 			removed := string(inference.BlockingRuleRemoved)
 			f.ClosedAt, f.BlockingOutcome = &now, &removed
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d resolved: its rule left AGENTS.md (%q)",
-				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, *f.BlockingRule))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: task %d on %s:%d resolved: its rule left %s (%q)",
+				prTag, *f.BitbucketCommentID, f.FilePath, f.LineNumber, name, *f.BlockingRule))
 		}
 	}
 	return out
@@ -184,20 +186,20 @@ func (r *Reviewer) retireRemovedRules(ctx context.Context, key store.PRKey, prTa
 // resolved keep the model's a/ or b/ prefix (inference.ShownPath), and a
 // real top-level a/ or b/ directory keeps it too: both readings are
 // probed, the rule kept if either marks it.
-func (r *Reviewer) stillMarked(ctx context.Context, key store.PRKey, prTag, commit, file, text string) (marked bool, why string) {
+func (r *Reviewer) stillMarked(ctx context.Context, key store.PRKey, prTag, commit, name, file, text string) (marked bool, why string) {
 	if commit == "" {
-		return false, "no PR head to read its AGENTS.md files at"
+		return false, "no PR head to read its " + name + " files at"
 	}
 	files := []string{file}
 	if s := inference.StripSidePrefix(file); s != file {
 		files = append(files, s)
 	}
-	nested, left, incomplete := r.lookupNested(ctx, key.Project, key.Repo, commit, prTag, files, true)
+	nested, left, incomplete := r.lookupNested(ctx, key.Project, key.Repo, commit, prTag, name, files, true)
 	switch {
 	case ctx.Err() != nil:
 		return false, "run cancelled"
 	case incomplete != "":
-		return false, "AGENTS.md files above the file not all read (" + incomplete + ")"
+		return false, name + " files above the file not all read (" + incomplete + ")"
 	case len(left) > 0:
 		return false, left[0].Path + " left out (" + left[0].Reason + ")"
 	}
@@ -219,17 +221,21 @@ func (r *Reviewer) stillMarked(ctx context.Context, key store.PRKey, prTag, comm
 // that adds a rule gets it once merged. known is false on any failure but
 // a 404 (no AGENTS.md there): an unread file is no proof a rule left.
 // Read on every review, tasks on or off: the rules also go to the prompt.
-func (r *Reviewer) targetAgentsMD(ctx context.Context, project, repo, branch string) (string, bool) {
+//
+// name is the run's rules file name (the team's choice): renamed before the
+// file is, a 404 here resolves the open blocking tasks as a deleted file
+// would (user, 2026-11-23: documented, not prevented).
+func (r *Reviewer) targetAgentsMD(ctx context.Context, project, repo, branch, name string) (string, bool) {
 	if branch == "" {
 		return "", false
 	}
-	body, err := r.bitbucket.FetchFileContent(ctx, project, repo, branch, "AGENTS.md")
+	body, err := r.bitbucket.FetchFileContent(ctx, project, repo, branch, name)
 	switch {
 	case bitbucket.Status(err) == http.StatusNotFound:
 		return "", true
 	case err != nil:
 		if ctx.Err() == nil {
-			r.log.WarnContext(ctx, fmt.Sprintf("AGENTS.md of %s unreadable: no blocking rules this review, no task resolved for a removed one: %v", branch, err))
+			r.log.WarnContext(ctx, fmt.Sprintf("%s of %s unreadable: no blocking rules this review, no task resolved for a removed one: %v", name, branch, err))
 		}
 		return "", false
 	}
@@ -245,7 +251,7 @@ func (r *Reviewer) targetAgentsMD(ctx context.Context, project, repo, branch str
 // rule text the root marks exactly as BlockingRule.Text holds it
 // (normalized and capped, so the stored BlockingRule of a finding
 // matches), past the cap too, for retireRemovedRules.
-func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string, nested []nestedAgentsMD) (rules []inference.BlockingRule, rootMarked map[string]bool) {
+func (r *Reviewer) blockingRules(ctx context.Context, prTag, name, agentsMD string, nested []nestedAgentsMD) (rules []inference.BlockingRule, rootMarked map[string]bool) {
 	sources := []inference.RuleSource{{Text: agentsMD}}
 	for _, n := range nested {
 		sources = append(sources, inference.RuleSource{Dir: n.Dir, Text: n.Content})
@@ -258,12 +264,12 @@ func (r *Reviewer) blockingRules(ctx context.Context, prTag, agentsMD string, ne
 				root++
 			}
 		}
-		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s): %d in the root AGENTS.md, %d in nested ones",
-			prTag, len(rules), root, len(rules)-root))
+		r.log.InfoContext(ctx, fmt.Sprintf("%s: %d blocking rule(s): %d in the root %s, %d in nested ones",
+			prTag, len(rules), root, name, len(rules)-root))
 	}
 	for _, rule := range rules {
 		if rule.Dir != "" {
-			r.log.InfoContext(ctx, fmt.Sprintf("%s: blocking rule %s from %sAGENTS.md covers %s only: %q", prTag, rule.ID, rule.Dir, rule.Dir, rule.Text))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s: blocking rule %s from %s%s covers %s only: %q", prTag, rule.ID, rule.Dir, name, rule.Dir, rule.Text))
 		}
 	}
 	if len(over) > 0 {

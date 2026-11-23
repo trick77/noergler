@@ -41,6 +41,25 @@ func marked(id string, conf int, comment string) inference.ReviewFinding {
 	return f
 }
 
+// A REVIEW.md team's blocking rules come from the target's REVIEW.md; an
+// AGENTS.md there is not the team's rules file.
+func TestBlockingRulesFromTheTeamsFile(t *testing.T) {
+	h := blockingHarness(t, marked("B1", 95, "controller runs SQL"))
+	h.bb.files["src1:REVIEW.md"] = blockingAgentsMD
+	h.bb.files["master:REVIEW.md"] = "# Rules\n- [blocking] No PII in logs.\n"
+	h.r.SetAgentsMDName("REVIEW.md")
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	p := h.llm.Reviews[0].Prompt
+	if !strings.Contains(p, "- B1: No PII in logs.") || strings.Contains(p, "B1: No SQL") {
+		t.Errorf("the blocking rule must come from the target's REVIEW.md:\n%s", p)
+	}
+	if summary := h.bb.Posted[len(h.bb.Posted)-1].Text; !strings.Contains(summary, "blocking rules from REVIEW.md") {
+		t.Errorf("the summary must name REVIEW.md:\n%s", summary)
+	}
+}
+
 func TestBlockingFindingIsPostedAsATask(t *testing.T) {
 	h := blockingHarness(t, marked("B1", 95, "controller runs SQL"))
 
@@ -485,7 +504,7 @@ func TestNestedBlockingRuleCoversItsDirectory(t *testing.T) {
 	if len(h.bb.Inline) != 1 || h.bb.Inline[0].File != "web/x.go" {
 		t.Errorf("comments = %+v: want web/x.go as a plain comment", h.bb.Inline)
 	}
-	if !strings.Contains(logs.String(), "downgraded_unknown_rule, rule \\\"Money is integer cents. (its AGENTS.md does not cover web/x.go)\\\"") {
+	if !strings.Contains(logs.String(), "downgraded_unknown_rule, rule \\\"Money is integer cents. (its rules file does not cover web/x.go)\\\"") {
 		t.Errorf("the out-of-scope claim needs its line:\n%s", logs.String())
 	}
 }

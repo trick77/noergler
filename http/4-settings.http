@@ -52,3 +52,12 @@ Content-Type: application/json
 {
   "use_pr_description": false
 }
+
+### Keep the review rules in REVIEW.md instead of AGENTS.md (root and every subdirectory; default: AGENTS.md)
+PUT {{host}}/teams/{{team}}/settings
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "agents_md_name": "REVIEW.md"
+}

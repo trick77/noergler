@@ -193,9 +193,12 @@ type teamConfigView struct {
 	MaxComments         int      `json:"max_comments"`
 	MaxFileLines        int      `json:"max_file_lines"`
 	RequireAgentsMD     bool     `json:"require_agents_md"`
-	AgentsMDWarnTokens  int      `json:"agents_md_warn_tokens"`
-	AgentsMDMaxTokens   int      `json:"agents_md_max_tokens"`
-	AgentsMDCustomLink  string   `json:"agents_md_custom_link,omitempty"`
+	// AgentsMDName is the file the team's rules live in, root and
+	// subdirectories: AGENTS.md unless the team chose another.
+	AgentsMDName       string `json:"agents_md_name"`
+	AgentsMDWarnTokens int    `json:"agents_md_warn_tokens"`
+	AgentsMDMaxTokens  int    `json:"agents_md_max_tokens"`
+	AgentsMDCustomLink string `json:"agents_md_custom_link,omitempty"`
 	// The same reason disputed in this many PRs within this many days gets
 	// an AGENTS.md proposal in the finding thread. The knobs, never the
 	// signals themselves.
@@ -249,6 +252,7 @@ func (r *Reviewer) teamConfig(ask *mentionAsk) teamConfigView {
 		DisputeSignalWindowDays: r.cfg.DisputeSignalWindowDays,
 		DisputeSignalThreshold:  r.cfg.DisputeSignalThreshold,
 		RequireAgentsMD:         r.cfg.RequireAgentsMD,
+		AgentsMDName:            r.mdName(),
 		AgentsMDWarnTokens:      r.cfg.AgentsMDWarnTokens,
 		AgentsMDMaxTokens:       r.cfg.AgentsMDMaxTokens,
 		AgentsMDCustomLink:      r.cfg.AgentsMDCustomLink,

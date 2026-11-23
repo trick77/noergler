@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -104,6 +105,7 @@ func TestTeams_GetRendersTheSnapshot(t *testing.T) {
 		"exclude_target_branches": []any{},
 		"use_pr_description":      true,
 		"create_tasks":            true,
+		"agents_md_name":          "AGENTS.md",
 		// On the shared accounts: the handle is the shared bot's, no health.
 		"bitbucket_account": map[string]any{"source": "shared", "username": testBot, "status": nil, "since": nil},
 		"jira_account":      map[string]any{"source": "shared", "status": nil, "since": nil},
@@ -170,8 +172,11 @@ func TestTeams_PutIsAPartialUpdate(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (body %s)", w.Code, w.Body.String())
 			}
-			if !reflect.DeepEqual(db.last, c.want) {
-				t.Errorf("stored = %+v, want %+v", db.last, c.want)
+			// No case names a file: the team's stays the default.
+			want := c.want
+			want.AgentsMDName = "AGENTS.md"
+			if !reflect.DeepEqual(db.last, want) {
+				t.Errorf("stored = %+v, want %+v", db.last, want)
 			}
 			if db.by != "team:"+testSlug {
 				t.Errorf("updated_by = %q, want the team", db.by)
@@ -270,6 +275,54 @@ func TestTeams_PutSwitchesTasksOff(t *testing.T) {
 	}
 	if h.rv.createTasks == nil || *h.rv.createTasks {
 		t.Errorf("reviewer not mirrored: %v", h.rv.createTasks)
+	}
+}
+
+// A team names its rules file: persisted, on the snapshot, mirrored onto the
+// reviewer, answered back; a later PUT without it keeps it.
+func TestTeams_PutAgentsMDName(t *testing.T) {
+	h := newHarness(t, nil)
+	st := &fakeSettingsStore{}
+	h.setStore(t, st)
+
+	w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), `{"agents_md_name":" REVIEW.md "}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body)
+	}
+	if got := decodeBody(t, w)["agents_md_name"]; got != "REVIEW.md" {
+		t.Errorf("agents_md_name = %v, want REVIEW.md (trimmed)", got)
+	}
+	if got := h.rt.Team().Review.AgentsMDName; got != "REVIEW.md" {
+		t.Errorf("snapshot name = %q", got)
+	}
+	if h.rv.agentsMDName == nil || *h.rv.agentsMDName != "REVIEW.md" {
+		t.Errorf("reviewer not mirrored: %v", h.rv.agentsMDName)
+	}
+
+	w = h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), `{"create_tasks":false}`)
+	if got := decodeBody(t, w)["agents_md_name"]; got != "REVIEW.md" {
+		t.Errorf("a PUT without the field changed the name to %v", got)
+	}
+}
+
+// A path, a hidden file, a blank or an over-long name is refused before
+// anything is written: the name is looked up in every directory.
+func TestTeams_PutAgentsMDNameRejectsAPath(t *testing.T) {
+	for _, bad := range []string{"docs/REVIEW.md", "../AGENTS.md", ".review.md", "", "   ", "REVIEW md", strings.Repeat("a", 65)} {
+		t.Run(bad, func(t *testing.T) {
+			h := newHarness(t, nil)
+			h.setStore(t, &fakeSettingsStore{})
+			before := h.rt.Team().Review.AgentsMDName
+
+			body, _ := json.Marshal(map[string]string{"agents_md_name": bad})
+			w := h.do(t, http.MethodPut, "/teams/"+testSlug+"/settings", bearer(), string(body))
+			if w.Code != http.StatusUnprocessableEntity {
+				t.Errorf("status = %d, want 422", w.Code)
+			}
+			if got := h.rt.Team().Review.AgentsMDName; got != before {
+				t.Errorf("snapshot changed to %q", got)
+			}
+		})
 	}
 }
 

@@ -114,7 +114,7 @@ export function ContextCard({ p }: { p: RunPipeline }) {
   // footer's size warning measures.
   const tokens = a.tokens + nested.reduce((sum, f) => sum + f.tokens, 0);
   const files = [
-    ...(a.found ? [{ path: "AGENTS.md", tokens: a.tokens }] : []),
+    ...(a.found ? [{ path: a.name ?? "AGENTS.md", tokens: a.tokens }] : []),
     ...nested,
   ];
   return (
@@ -124,7 +124,9 @@ export function ContextCard({ p }: { p: RunPipeline }) {
           k={t("promptPart.repo_instructions")}
           v={
             !a.found && nested.length === 0
-              ? t("run.agentsMissing")
+              ? a.empty
+                ? t("run.agentsEmpty", { name: a.name ?? "AGENTS.md" })
+                : t("run.agentsMissing")
               : a.warn_tokens > 0
                 ? t("run.agentsOf", {
                     tokens: num(tokens),

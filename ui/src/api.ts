@@ -206,6 +206,9 @@ export interface Team {
   /** Branch globs: a matching source or target branch is not auto-reviewed. */
   exclude_source_branches: string[];
   exclude_target_branches: string[];
+  /** The file the team keeps its review rules under, AGENTS.md unless it
+   *  chose another. Absent for a disabled team. */
+  agents_md_name?: string;
   /** `<profile>-<effort>`, the label every run records. Absent for a
    *  disabled team: it has no started client. */
   model?: string;
@@ -400,6 +403,11 @@ export interface RunPipeline {
     found: boolean;
     tokens: number;
     warn_tokens: number;
+    // The root file's name, the team's choice; absent on runs from before
+    // it was recorded, which read AGENTS.md.
+    name?: string;
+    // The root file is there but blank: the review ran without its rules.
+    empty?: boolean;
     nested?: { path: string; tokens: number }[];
     left_out?: {
       path: string;

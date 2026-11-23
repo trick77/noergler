@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
@@ -42,7 +43,7 @@ func TestSkipSummariesIsPinned(t *testing.T) {
 	if got := OptOutBranchSummary(lang.EN, "noergloff", "feature/noergloff-thing"); got != g.OptOut {
 		t.Errorf("OptOutBranchSummary\n got:  %q\n want: %q", got, g.OptOut)
 	}
-	if got := AgentsMDMissingSummary(lang.EN); got != g.AgentsMissing {
+	if got := AgentsMDMissingSummary(lang.EN, "AGENTS.md"); got != g.AgentsMissing {
 		t.Errorf("AgentsMDMissingSummary\n got:  %q\n want: %q", got, g.AgentsMissing)
 	}
 	if got := DiffTooLargeSummary(lang.EN, 10*1024*1024); got != g.DiffTooLarge {
@@ -54,7 +55,7 @@ func TestSkipSummariesIsPinned(t *testing.T) {
 // the file, never how to switch the requirement off.
 func TestAgentsMDMissingSummaryHasNoOptOut(t *testing.T) {
 	for _, l := range []lang.Lang{lang.EN, lang.DE} {
-		got := AgentsMDMissingSummary(l)
+		got := AgentsMDMissingSummary(l, "AGENTS.md")
 		for _, banned := range []string{"require_agents_md", "REVIEW_REQUIRE_AGENTS_MD", "teams.yaml", "Opt-out"} {
 			if strings.Contains(got, banned) {
 				t.Errorf("%s summary mentions %q:\n%s", l, banned, got)
@@ -80,10 +81,57 @@ func TestAgentsMDTooLargeSummaryIsPinned(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := AgentsMDTooLargeSummary(lang.EN, 12345, 7000, c.custom); got != c.want {
+			if got := AgentsMDTooLargeSummary(lang.EN, "AGENTS.md", 12345, 7000, c.custom); got != c.want {
 				t.Errorf("\n got:  %q\n want: %q", got, c.want)
 			}
 		})
+	}
+}
+
+// A team that chose another name reads that name everywhere the summary
+// talks about its file; "AGENTS.md" is left only in the further-reading
+// titles, which are articles, not the team's file.
+func TestSkipSummariesNameTheTeamsFile(t *testing.T) {
+	for _, l := range []lang.Lang{lang.EN, lang.DE} {
+		for what, got := range map[string]string{
+			"missing":   AgentsMDMissingSummary(l, "REVIEW.md"),
+			"too large": AgentsMDTooLargeSummary(l, "REVIEW.md", 12345, 7000, ""),
+		} {
+			body, _, _ := strings.Cut(got, "**Further reading**")
+			body, _, _ = strings.Cut(body, "**Weiterführende Links**")
+			if !strings.Contains(body, "`REVIEW.md`") {
+				t.Errorf("%s %s summary does not name REVIEW.md:\n%s", l, what, got)
+			}
+			if strings.Contains(body, "AGENTS.md") {
+				t.Errorf("%s %s summary still names AGENTS.md:\n%s", l, what, got)
+			}
+		}
+	}
+}
+
+// TestSkipGoldenUpdate rewrites testdata/skip_golden.json's summaries from
+// the current builders when SKIP_GOLDEN_UPDATE=1; otherwise it does nothing.
+func TestSkipGoldenUpdate(t *testing.T) {
+	if os.Getenv("SKIP_GOLDEN_UPDATE") != "1" {
+		t.Skip("set SKIP_GOLDEN_UPDATE=1 to rewrite the golden")
+	}
+	g := loadSkipGolden(t)
+	g.OptOut = OptOutBranchSummary(lang.EN, "noergloff", "feature/noergloff-thing")
+	g.AgentsMissing = AgentsMDMissingSummary(lang.EN, "AGENTS.md")
+	g.DiffTooLarge = DiffTooLargeSummary(lang.EN, 10*1024*1024)
+	g.AgentsTooLargeNoLink = AgentsMDTooLargeSummary(lang.EN, "AGENTS.md", 12345, 7000, "")
+	g.AgentsTooLargeMarkdown = AgentsMDTooLargeSummary(lang.EN, "AGENTS.md", 12345, 7000, "[Our guide](https://intra/guide)")
+	g.AgentsTooLargeBareURL = AgentsMDTooLargeSummary(lang.EN, "AGENTS.md", 12345, 7000, "https://intra/guide")
+	g.AgentsTooLargeParen = AgentsMDTooLargeSummary(lang.EN, "AGENTS.md", 12345, 7000, "[Wiki](https://en.wikipedia.org/wiki/Foo_(bar))")
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", " ")
+	if err := enc.Encode(g); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("testdata/skip_golden.json", buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

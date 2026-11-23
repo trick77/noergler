@@ -286,14 +286,15 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 	}
 	// AGENTS.md from the same commit, so code and guidelines match;
 	// unreadable, the answer goes on without it.
-	rootMD := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch()).text
+	root := r.fetchRepoInstructions(ctx, project, repo, at, pr.ToRef.Branch())
+	rootMD := root.text
 	// The nested ones above the finding's file, the whole chain, from the
 	// same commit, for the prompts. A dispute bullet is checked against the root
 	// alone: the signal is repo-wide, a nested rule covers one directory.
-	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, at, prTag, []string{f.FilePath})
+	nested, _, _ := r.fetchNestedAgentsMD(ctx, project, repo, at, prTag, root.name, []string{f.FilePath})
 	agentsMD, _, left := withNested(rootMD, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
 	if len(left) > 0 {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit: %s", prTag, strings.Join(left, ", ")))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the %s limit: %s", prTag, root.name, strings.Join(left, ", ")))
 	}
 	name := firstName(r.displayName, comment.Author.DisplayName)
 	l := r.languageFor(ctx, author)
@@ -353,7 +354,7 @@ func (r *Reviewer) HandleFindingReply(ctx context.Context, payload *webhook.Payl
 		key: key, team: team, project: project, repo: repo, prID: pr.ID, prTag: prTag, where: where,
 		author:    author,
 		findingID: f.ID, replyTo: comment.ID, text: text,
-		agentsMD: rootMD, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
+		agentsMD: rootMD, mdName: root.name, signalIDs: signalIDs, signalRules: signalRules, counter: counter,
 		name: name, namesOn: r.displayName != nil, lang: l,
 		secondPass: secondPass, fixOnly: fixOnly, fix: fix,
 		threadID: f.BitbucketCommentID, botFixCommit: f.BotFixCommit, trigger: trigger,
@@ -380,6 +381,9 @@ type replyJob struct {
 	// agentsMD is the root AGENTS.md alone, what a dispute bullet is
 	// checked against; the prompts carry the nested one too.
 	agentsMD string
+	// mdName is the rules file's name the reply read (the team's choice),
+	// for the proposal's heading.
+	mdName string
 	// signalIDs are the open dispute signals the prompt listed, in order:
 	// matches_signal n is signalIDs[n-1], worded signalRules[n-1].
 	signalIDs   []int64

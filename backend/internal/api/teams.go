@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -74,6 +75,9 @@ type teamView struct {
 	// SNAPSHOT task and a blocking rule's (REVIEW_CREATE_TASKS gates it
 	// instance-wide).
 	CreateTasks bool `json:"create_tasks"`
+	// AgentsMDName is the file the team keeps its review rules under, in the
+	// root and every subdirectory: AGENTS.md unless the team chose another.
+	AgentsMDName string `json:"agents_md_name"`
 	// Which accounts the team works with: its own (pushed) or the shared
 	// ones. Never a token.
 	BitbucketAccount bitbucketAccountView `json:"bitbucket_account"`
@@ -141,6 +145,7 @@ func viewOf(t *config.Team, rt *teams.Runtime, sharedBot string, authorGlobs []s
 		ExcludeTargetBranches: nonNil(t.Review.ExcludeTargetBranches),
 		UsePRDescription:      t.Review.UsePRDescription,
 		CreateTasks:           t.Review.CreateTasks,
+		AgentsMDName:          cmp.Or(t.Review.AgentsMDName, config.DefaultAgentsMDName),
 	}
 }
 
@@ -177,6 +182,7 @@ type settingsRequest struct {
 	ExcludeTargetBranches *[]string `json:"exclude_target_branches"`
 	UsePRDescription      *bool     `json:"use_pr_description"`
 	CreateTasks           *bool     `json:"create_tasks"`
+	AgentsMDName          *string   `json:"agents_md_name"`
 }
 
 // clean resolves one partial-update field: nil keeps the current list,
@@ -192,6 +198,14 @@ func clean(items *[]string, current []string) []string {
 		}
 	}
 	return out
+}
+
+// deref is a partial-update string, "" for nil (keep the current value).
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // keep resolves a partial-update switch: nil keeps the current value.
@@ -216,6 +230,17 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 	if !decodeStrict(w, r, &body) {
 		return
 	}
+	// A file name, never a path: the same name is looked up in the root and
+	// in every subdirectory. Trimmed like the list entries.
+	if body.AgentsMDName != nil {
+		name := strings.TrimSpace(*body.AgentsMDName)
+		if !config.AgentsMDNameRE.MatchString(name) {
+			httpx.WriteError(w, http.StatusUnprocessableEntity,
+				"agents_md_name must be a plain file name such as AGENTS.md or REVIEW.md (letters, digits, '.', '_', '-', no directory)")
+			return
+		}
+		body.AgentsMDName = &name
+	}
 
 	err := rt.UpdateSettings(func(current store.TeamSettings) store.TeamSettings {
 		return store.TeamSettings{
@@ -226,6 +251,7 @@ func (d Deps) putTeamSettings(w http.ResponseWriter, r *http.Request) {
 			ExcludeTargetBranches: clean(body.ExcludeTargetBranches, current.ExcludeTargetBranches),
 			UsePRDescription:      keep(body.UsePRDescription, current.UsePRDescription),
 			CreateTasks:           keep(body.CreateTasks, current.CreateTasks),
+			AgentsMDName:          cmp.Or(deref(body.AgentsMDName), current.AgentsMDName),
 		}
 	}, func(next store.TeamSettings) error {
 		return d.Store.PutSettings(ctx, slug, next, "team:"+slug)

@@ -98,6 +98,9 @@ type Reviewer struct {
 	// task call at all (tasksOn).
 	teamTasks   atomic.Bool
 	createTasks bool
+	// agentsMDName is the team's rules file name (AGENTS.md unless the team
+	// chose another), rewritten by the same API. Read it through mdName.
+	agentsMDName atomic.Pointer[string]
 	// defaultBranches is each repo's default branch, read once an hour.
 	defaultBranches branchCache
 	// snapshotMemo is each PR's last SNAPSHOT hits by its build files.
@@ -196,7 +199,24 @@ func New(opt Options) *Reviewer {
 	}
 	r.usePRDescription.Store(opt.Config.UsePRDescription)
 	r.teamTasks.Store(opt.Config.CreateTasks)
+	r.SetAgentsMDName(opt.Config.AgentsMDName)
 	return r
+}
+
+// SetAgentsMDName sets the file name read for the team's rules, in the root
+// and every subdirectory, for every later review, mention and reply. ""
+// is the default, AGENTS.md.
+func (r *Reviewer) SetAgentsMDName(name string) {
+	name = cmp.Or(name, config.DefaultAgentsMDName)
+	r.agentsMDName.Store(&name)
+}
+
+// mdName is the team's rules file name, AGENTS.md unless it chose another.
+func (r *Reviewer) mdName() string {
+	if p := r.agentsMDName.Load(); p != nil {
+		return *p
+	}
+	return config.DefaultAgentsMDName
 }
 
 // SetUsePRDescription switches the PR title and description in or out of
@@ -397,6 +417,9 @@ func (r *Reviewer) prDescription(ctx context.Context, prTag string, pr webhook.P
 // the first one read; when there is none, empty, unknown and oversize say
 // why that is not "missing".
 type repoInstructions struct {
+	// name is the rules file name this read looked for (mdName at its
+	// start), for every text the run renders about it.
+	name string
 	text string
 	// empty: the first file read is blank. A team that wants no rules
 	// commits an empty file (user, 2026-11-23: "wenn jemand keins will,
@@ -410,22 +433,31 @@ type repoInstructions struct {
 	oversize int
 }
 
+// blankRules reports a rules file with nothing in it: whitespace only, or a
+// lone byte-order mark (an "empty" file from a Windows editor), which
+// strings.TrimSpace keeps.
+func blankRules(content string) bool {
+	return strings.TrimSpace(strings.ReplaceAll(content, string(rune(0xFEFF)), "")) == ""
+}
+
 // fetchRepoInstructions reads AGENTS.md from the PR branch, falling back to
 // the target branch, as before, when the PR branch's is missing, oversized or
 // unreadable: the target's file is a better guide than none. A blank file is
 // an answer, not a miss: the PR branch's empty file wins over the target's
 // rules, as its content would (user, 2026-11-23).
 func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fromCommit, toDisplayID string) repoInstructions {
-	var out repoInstructions
+	// One name for the whole read: a settings change mid-run applies from
+	// the next one.
+	out := repoInstructions{name: r.mdName()}
 	for _, ref := range []string{fromCommit, toDisplayID} {
 		if ref == "" {
 			continue
 		}
-		content, err := r.bitbucket.FetchFileContent(ctx, project, repo, ref, "AGENTS.md")
+		content, err := r.bitbucket.FetchFileContent(ctx, project, repo, ref, out.name)
 		var tooLarge *bitbucket.ContentTooLarge
 		switch {
 		case bitbucket.Status(err) == http.StatusNotFound:
-			r.log.DebugContext(ctx, "AGENTS.md not found at ref "+ref)
+			r.log.DebugContext(ctx, out.name+" not found at ref "+ref)
 			continue
 		case errors.As(err, &tooLarge):
 			if out.oversize == 0 {
@@ -434,24 +466,24 @@ func (r *Reviewer) fetchRepoInstructions(ctx context.Context, project, repo, fro
 					out.oversize = *tooLarge.Size
 				}
 			}
-			r.log.InfoContext(ctx, fmt.Sprintf("AGENTS.md at ref %s over the file cap: %v", ref, err))
+			r.log.InfoContext(ctx, fmt.Sprintf("%s at ref %s over the file cap: %v", out.name, ref, err))
 			continue
 		case err != nil:
 			if ctx.Err() == nil {
-				r.log.WarnContext(ctx, fmt.Sprintf("AGENTS.md unreadable at ref %s: %v", ref, err))
+				r.log.WarnContext(ctx, fmt.Sprintf("%s unreadable at ref %s: %v", out.name, ref, err))
 			}
 			out.unknown = true
 			continue
 		}
-		if strings.TrimSpace(content) == "" {
+		if blankRules(content) {
 			// unknown and oversize stay: a PR branch file that could not be
 			// read may hold rules, so the guards treat it as before.
-			r.log.InfoContext(ctx, "Empty AGENTS.md at ref "+ref+": no project rules")
+			r.log.InfoContext(ctx, "Empty "+out.name+" at ref "+ref+": no project rules")
 			out.empty = true
 			return out
 		}
-		r.log.InfoContext(ctx, "Loaded AGENTS.md from ref "+ref)
-		return repoInstructions{text: content}
+		r.log.InfoContext(ctx, "Loaded "+out.name+" from ref "+ref)
+		return repoInstructions{name: out.name, text: content}
 	}
 	return out
 }

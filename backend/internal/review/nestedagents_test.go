@@ -191,12 +191,80 @@ func TestReviewCarriesTheNestedChain(t *testing.T) {
 	}
 }
 
+// A team that keeps its rules in REVIEW.md: the root and every directory
+// are read under that name, AGENTS.md beside it is not read at all, and
+// the summary names the team's files.
+func TestReviewReadsTheTeamsFileName(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.bb.prDiff = nestedDiff
+		h.bb.files["src1:services/pay/a.go"] = "package a\nfunc new() {}\n"
+		h.bb.files["src1:REVIEW.md"] = "Root review rules."
+		h.bb.files["src1:services/REVIEW.md"] = "Every service logs with team=."
+		h.bb.files["src1:services/pay/AGENTS.md"] = "Agent rules, not the team's review file."
+	})
+	h.r.SetAgentsMDName("REVIEW.md")
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.llm.Reviews) != 1 {
+		t.Fatalf("reviews = %d, want 1", len(h.llm.Reviews))
+	}
+	p := h.llm.Reviews[0].Prompt
+	if !strings.Contains(p, "Root review rules.") || !strings.Contains(p, "### services/REVIEW.md") {
+		t.Errorf("the root and nested REVIEW.md must be carried:\n%s", p)
+	}
+	if strings.Contains(p, "Be terse.") || strings.Contains(p, "Agent rules") {
+		t.Errorf("an AGENTS.md must not be read for a REVIEW.md team:\n%s", p)
+	}
+	var summary string
+	for _, c := range h.bb.Posted {
+		summary += c.Text
+	}
+	if !strings.Contains(summary, "Also applied: `services/REVIEW.md`") {
+		t.Errorf("the summary must name the team's nested file:\n%s", summary)
+	}
+}
+
+// The chosen name missing is the file missing: the skip summary names it,
+// whatever AGENTS.md the repo holds.
+func TestReviewSkipsWithoutTheTeamsFile(t *testing.T) {
+	h := newHarness(t, nil)
+	h.r.SetAgentsMDName("REVIEW.md")
+
+	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
+
+	if len(h.llm.Reviews) != 0 {
+		t.Error("review ran without the team's REVIEW.md")
+	}
+	if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "no `REVIEW.md` found") {
+		t.Errorf("expected the REVIEW.md summary, got %+v", h.bb.Posted)
+	}
+}
+
+// A rename is a new name to look for at the same commit: the memo never
+// answers with the old name's files.
+func TestFetchNestedMemoByName(t *testing.T) {
+	h := newHarness(t, func(h *harness) {
+		h.bb.files["c1:services/AGENTS.md"] = "agents"
+		h.bb.files["c1:services/REVIEW.md"] = "review"
+	})
+	ctx := context.Background()
+	paths := []string{"services/a.go"}
+	if got, _, _ := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", "AGENTS.md", paths); len(got) != 1 || got[0].Content != "agents" {
+		t.Fatalf("AGENTS.md lookup: %+v", got)
+	}
+	got, _, _ := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", "REVIEW.md", paths)
+	if len(got) != 1 || got[0].Content != "review" || got[0].Path() != "services/REVIEW.md" {
+		t.Errorf("REVIEW.md lookup at the same commit: %+v", got)
+	}
+}
+
 // No depth limit: a file five levels down is found.
 func TestFetchNestedFindsAnyDepth(t *testing.T) {
 	h := newHarness(t, func(h *harness) {
 		h.bb.files["c1:a/b/c/d/e/AGENTS.md"] = "deep rules"
 	})
-	got, _, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"a/b/c/d/e/f/x.go"})
+	got, _, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", "AGENTS.md", []string{"a/b/c/d/e/f/x.go"})
 	if len(got) != 1 || got[0].Dir != "a/b/c/d/e/" {
 		t.Errorf("found %v, want a/b/c/d/e/", got)
 	}
@@ -209,7 +277,7 @@ func TestFetchNestedMemoByCommit(t *testing.T) {
 	ctx := context.Background()
 	paths := []string{"services/pay/a.go"}
 	look := func(commit string) []nestedAgentsMD {
-		found, _, _ := h.r.fetchNestedAgentsMD(ctx, "P", "R", commit, "t", paths)
+		found, _, _ := h.r.fetchNestedAgentsMD(ctx, "P", "R", commit, "t", "AGENTS.md", paths)
 		return found
 	}
 	h.bb.files["c1:services/pay/AGENTS.md"] = "pay rules"
@@ -240,13 +308,13 @@ func TestFetchNestedErrorNotRemembered(t *testing.T) {
 	ctx := context.Background()
 	key := "c1:services/AGENTS.md"
 	h.bb.fileErr[key] = &bitbucket.StatusError{Method: "GET", Path: "/raw/services/AGENTS.md", Status: 500}
-	got, left, incomplete := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", []string{"services/a.go"})
+	got, left, incomplete := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", "AGENTS.md", []string{"services/a.go"})
 	if len(got) != 0 || len(left) != 0 || incomplete != render.LookupUnreadable {
 		t.Fatalf("first lookup: %v, left %v, incomplete %q: want none, no path named, the lookup unreadable", got, left, incomplete)
 	}
 	delete(h.bb.fileErr, key)
 	h.bb.files[key] = "shared"
-	if got, _, incomplete := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", []string{"services/a.go"}); len(got) != 1 || incomplete != "" {
+	if got, _, incomplete := h.r.fetchNestedAgentsMD(ctx, "P", "R", "c1", "t", "AGENTS.md", []string{"services/a.go"}); len(got) != 1 || incomplete != "" {
 		t.Errorf("second lookup: %v, incomplete %q, want the file", got, incomplete)
 	}
 }
@@ -255,7 +323,7 @@ func TestFetchNestedErrorNotRemembered(t *testing.T) {
 func TestFetchNestedProbeCapIncomplete(t *testing.T) {
 	h := newHarness(t, nil)
 	deep := strings.Repeat("d/", nestedAgentsProbes+1) + "x.go"
-	if _, _, incomplete := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{deep}); incomplete != render.LookupProbeCap {
+	if _, _, incomplete := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", "AGENTS.md", []string{deep}); incomplete != render.LookupProbeCap {
 		t.Errorf("incomplete %q, want probe_cap", incomplete)
 	}
 }
@@ -266,7 +334,7 @@ func TestFetchNestedStopsOnFirstError(t *testing.T) {
 	h := newHarness(t, nil)
 	h.bb.fileErr["c1:services/AGENTS.md"] = &bitbucket.StatusError{Method: "GET", Path: "/raw/services/AGENTS.md", Status: 503}
 	h.bb.files["c1:services/pay/AGENTS.md"] = "pay rules"
-	got, _, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"services/pay/api/a.go"})
+	got, _, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", "AGENTS.md", []string{"services/pay/api/a.go"})
 	if len(got) != 0 {
 		t.Errorf("found %v after a failed read", got)
 	}
@@ -283,7 +351,7 @@ func TestFetchNestedOversizeLeftOut(t *testing.T) {
 	h := newHarness(t, nil)
 	h.bb.files["c1:services/AGENTS.md"] = strings.Repeat("x", nestedAgentsMaxBytes+1)
 	for range 2 {
-		got, left, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", []string{"services/a.go"})
+		got, left, _ := h.r.fetchNestedAgentsMD(context.Background(), "P", "R", "c1", "t", "AGENTS.md", []string{"services/a.go"})
 		if len(got) != 0 || !slices.Equal(left, []store.AgentsMDLeft{{Path: "services/AGENTS.md", Reason: render.LeftOversize}}) {
 			t.Errorf("oversize: kept %v, left %v", got, left)
 		}

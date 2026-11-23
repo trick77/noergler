@@ -69,23 +69,22 @@ func optOutBranchSummaryEN(keyword, branch string) string {
 		"noergler service (empty string disables the feature).\n"
 }
 
-// agentsMDMissingSummaryEN is the skip summary when AGENTS.md is required and
-// absent from both the PR branch and the target branch.
-func agentsMDMissingSummaryEN() string {
-	return "### Review skipped — no `AGENTS.md` found 🛑\n\n" +
-		"This repository has no `AGENTS.md` on the PR branch or the target branch. " +
-		"Project-specific review guidelines are **vital** for producing targeted, " +
-		"high-signal feedback — without them the reviewer falls back to generic nits, " +
+// agentsMDMissingSummaryEN is AgentsMDMissingSummary in English.
+func agentsMDMissingSummaryEN(name string) string {
+	return fmt.Sprintf("### Review skipped — no `%s` found 🛑\n\n", name) +
+		fmt.Sprintf("This repository has no `%s` on the PR branch or the target branch, ", name) +
 		"so the review was not run.\n\n" +
 		"**What to do**\n" +
-		"- Add an `AGENTS.md` file to the repository root describing project " +
-		"conventions, forbidden patterns, and areas the reviewer should focus on. " +
-		"An `AGENTS.md` in a subdirectory adds rules for that part of the repo; " +
-		"it does not replace the root one.\n" +
-		"- No project rules wanted? An empty `AGENTS.md` is enough; the review " +
+		fmt.Sprintf("- Add `%s` to the repository root with what the code does not show: ", name) +
+		"invariants that must never break, your team's conventions, decisions and their why, " +
+		"traps you have learned from. That is what the review holds your code to; " +
+		"without it, it sees only the diff.\n" +
+		"- A few lines are enough to start. Mark rules that should block a merge with " +
+		fmt.Sprintf("`[blocking]`. In a monorepo, `%s` in a subdirectory adds rules ", name) +
+		"for that part.\n" +
+		fmt.Sprintf("- No project rules wanted? An empty `%s` is enough; the review ", name) +
 		"then runs on general rules.\n" +
-		"- Push the file to the PR branch (or merge it into the target branch) and " +
-		"the next webhook event on this PR will trigger a full review.\n"
+		"- Push the file; the next webhook event on this PR triggers a full review.\n"
 }
 
 // diffTooLargeSummaryEN is the skip summary when the PR diff exceeds the byte
@@ -101,10 +100,10 @@ func diffTooLargeSummaryEN(limit int) string {
 		"trigger a full review.\n"
 }
 
-// AgentsMDTooLargeSummary is the skip summary when AGENTS.md is over the hard
-// token limit. customLink, when non-empty, is prepended to the further
-// reading list.
-func AgentsMDTooLargeSummary(l lang.Lang, tokens, limit int, customLink string) string {
+// AgentsMDTooLargeSummary is the skip summary when the team's rules file
+// (name) is over the hard token limit. customLink, when non-empty, is
+// prepended to the further reading list.
+func AgentsMDTooLargeSummary(l lang.Lang, name string, tokens, limit int, customLink string) string {
 	links := make([]Link, 0, len(agentsMDFurtherReading)+1)
 	if cl, ok := ParseCustomLink(customLink); ok {
 		links = append(links, cl)
@@ -119,20 +118,20 @@ func AgentsMDTooLargeSummary(l lang.Lang, tokens, limit int, customLink string) 
 		fmt.Fprintf(&fr, "- [%s](%s)", link.Title, link.URL)
 	}
 	if l == lang.EN {
-		return agentsMDTooLargeSummaryEN(tokens, limit, fr.String())
+		return agentsMDTooLargeSummaryEN(name, tokens, limit, fr.String())
 	}
-	return agentsMDTooLargeSummaryDE(tokens, limit, fr.String())
+	return agentsMDTooLargeSummaryDE(name, tokens, limit, fr.String())
 }
 
-func agentsMDTooLargeSummaryEN(tokens, limit int, fr string) string {
-	return "### Review skipped — `AGENTS.md` too large 🛑\n\n" +
-		fmt.Sprintf("`AGENTS.md` weighs in at ~%s tokens, exceeding the configured ", Fmt(tokens)) +
+func agentsMDTooLargeSummaryEN(name string, tokens, limit int, fr string) string {
+	return fmt.Sprintf("### Review skipped — `%s` too large 🛑\n\n", name) +
+		fmt.Sprintf("`%s` weighs in at ~%s tokens, exceeding the configured ", name, Fmt(tokens)) +
 		fmt.Sprintf("hard limit of %s tokens. Oversized agent instructions crowd out ", Fmt(limit)) +
 		"the actual diff, degrade review quality (context rot), and inflate " +
 		"inference cost — so the review was not run.\n\n" +
 		"**What to do**\n" +
-		"- Trim `AGENTS.md`: drop sections that are there for humans to skim, " +
-		"remove duplicated README content, replace prose with terse rules.\n" +
+		"- Keep what the code does not show: invariants, conventions, decisions and their why. " +
+		"Cut what the code or the README already says; replace prose with terse rules.\n" +
 		"- Move detailed reference material into separate files and link to " +
 		"them; keep the main file lean.\n" +
 		"- Push the slimmer file and the next webhook event on this PR will " +

@@ -559,6 +559,11 @@ Go types:
 | `exclude_source_branches` | text[] | no | `'{}'::text[]` |  |
 | `exclude_target_branches` | text[] | no | `'{}'::text[]` |  |
 | `create_tasks` | boolean | no | `true` |  |
+| `agents_md_name` | text | no | `'AGENTS.md'::text` |  |
+
+Checks:
+
+- `CONSTRAINT team_settings_agents_md_name_check CHECK (agents_md_name <> ''::text AND POSITION(('/'::text) IN (agents_md_name)) = 0)`
 
 ## user_settings
 
@@ -1041,6 +1046,7 @@ erDiagram
         text[] exclude_source_branches
         text[] exclude_target_branches
         boolean create_tasks
+        text agents_md_name
     }
     user_settings {
         text user_name PK

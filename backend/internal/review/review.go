@@ -144,11 +144,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if repoInstructions == "" && md.oversize > 0 && r.cfg.AgentsMDMaxTokens > 0 {
 		n := md.oversize / 4
 		r.log.InfoContext(ctx, fmt.Sprintf(
-			"%s: AGENTS.md over the file cap (%d bytes, ~%d tokens > %d), skipping review",
-			prTag, md.oversize, n, r.cfg.AgentsMDMaxTokens))
+			"%s: %s over the file cap (%d bytes, ~%d tokens > %d), skipping review",
+			prTag, md.name, md.oversize, n, r.cfg.AgentsMDMaxTokens))
 		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
-			render.AgentsMDTooLargeSummary(l, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
+			render.AgentsMDTooLargeSummary(l, md.name, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
 		return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
 	}
 
@@ -158,7 +158,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// too.
 	if repoInstructions == "" && (md.unknown || md.oversize > 0) && r.cfg.RequireAgentsMD {
 		if ctx.Err() == nil {
-			r.log.WarnContext(ctx, prTag+": AGENTS.md unreadable, not reviewed (the next push reviews this range too)")
+			r.log.WarnContext(ctx, prTag+": "+md.name+" unreadable, not reviewed (the next push reviews this range too)")
 			r.recordAttempt(ctx, store.Attempt{
 				Key: key, TeamSlug: r.TeamSlug, Kind: kind,
 				Outcome: inference.OutcomeError.String(),
@@ -172,9 +172,9 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// An empty file is present: the review runs without project rules.
 	if repoInstructions == "" && !md.empty && r.cfg.RequireAgentsMD {
 		r.log.InfoContext(ctx, fmt.Sprintf(
-			"%s: no AGENTS.md found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag))
+			"%s: no %s found on PR or target branch, skipping review (set REVIEW_REQUIRE_AGENTS_MD=false to override)", prTag, md.name))
 		prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
-		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary(l))
+		r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID, render.AgentsMDMissingSummary(l, md.name))
 		return nil, ctx, r.abort(ctx, key, kind, SkipNoAgentsMD, prTag, httpCounter)
 	}
 
@@ -182,11 +182,11 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	if repoInstructions != "" && r.cfg.AgentsMDMaxTokens > 0 {
 		if n := r.tokens.Count(repoInstructions); n > r.cfg.AgentsMDMaxTokens {
 			r.log.InfoContext(ctx, fmt.Sprintf(
-				"%s: AGENTS.md too large (%d > %d tokens), skipping review (set REVIEW_AGENTS_MD_MAX_TOKENS=0 to disable the hard limit)",
-				prTag, n, r.cfg.AgentsMDMaxTokens))
+				"%s: %s too large (%d > %d tokens), skipping review (set REVIEW_AGENTS_MD_MAX_TOKENS=0 to disable the hard limit)",
+				prTag, md.name, n, r.cfg.AgentsMDMaxTokens))
 			prReviewID, _ := r.upsertKeepingPrior(ctx, upsert, key)
 			r.postOrUpdateSummary(ctx, project, repo, pr.ID, prReviewID,
-				render.AgentsMDTooLargeSummary(l, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
+				render.AgentsMDTooLargeSummary(l, md.name, n, r.cfg.AgentsMDMaxTokens, r.cfg.AgentsMDCustomLink))
 			return nil, ctx, r.abort(ctx, key, kind, SkipAgentsMDTooLarge, prTag, httpCounter)
 		}
 	}
@@ -262,16 +262,16 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		if cumulativePR.paths != nil {
 			paths = cumulativePR.paths
 		} else {
-			r.log.InfoContext(ctx, prTag+": nested AGENTS.md looked up for the push's paths only: the PR's diff was not read")
+			r.log.InfoContext(ctx, prTag+": nested "+md.name+" looked up for the push's paths only: the PR's diff was not read")
 		}
 	}
 	rootInstructions := repoInstructions
-	nested, nestedLeft, nestedIncomplete := r.fetchNestedAgentsMD(ctx, project, repo, sourceCommit, prTag, paths)
+	nested, nestedLeft, nestedIncomplete := r.fetchNestedAgentsMD(ctx, project, repo, sourceCommit, prTag, md.name, paths)
 	repoInstructions, nestedKept, nestedDropped := withNested(repoInstructions, nested, r.cfg.AgentsMDMaxTokens, r.tokens.Count)
 	nestedLeft = leftOver(nestedLeft, nestedDropped)
 	if len(nestedDropped) > 0 {
-		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the AGENTS.md limit of %d tokens: %s",
-			prTag, r.cfg.AgentsMDMaxTokens, strings.Join(nestedDropped, ", ")))
+		r.log.WarnContext(ctx, fmt.Sprintf("%s: left out over the %s limit of %d tokens: %s",
+			prTag, md.name, r.cfg.AgentsMDMaxTokens, strings.Join(nestedDropped, ", ")))
 	}
 
 	// 13c. Callers in files the PR does not change: one search, at most.
@@ -362,12 +362,14 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 	// The root's rules from the target branch, never the PR's own: the
 	// branch a rule gates must not lift it. A rule no longer marked blocks
 	// nothing: its open tasks go.
-	rulesMD, rulesKnown := r.targetAgentsMD(ctx, project, repo, pr.ToRef.Branch())
+	// Under the run's one name (md.name), never a fresh read of the setting:
+	// a rename mid-run must not 404 here and resolve every root task.
+	rulesMD, rulesKnown := r.targetAgentsMD(ctx, project, repo, pr.ToRef.Branch(), md.name)
 	// The nested files' rules join them, from the PR head (blockingRules):
 	// every file found, one left out of the prompt over the token limit too,
 	// since its rules still hold.
-	blockingRules, markedRules := r.blockingRules(ctx, prTag, rulesMD, nested)
-	existing = r.retireRemovedRules(ctx, key, prTag, sourceCommit, existing, markedRules, rulesKnown)
+	blockingRules, markedRules := r.blockingRules(ctx, prTag, md.name, rulesMD, nested)
+	existing = r.retireRemovedRules(ctx, key, prTag, sourceCommit, md.name, existing, markedRules, rulesKnown)
 	// Only an incremental review may retire a finding: on a full one every
 	// PR line is an added line, the buggy one too, so nothing would prove a
 	// fix. No id listed, nothing to claim.
@@ -429,7 +431,8 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		// line adds the nested ones' tokens to it.
 		AgentsMD: store.AgentsMDFacts{Found: rootInstructions != "", Tokens: rootTokens(rootInstructions, repoInstructions,
 			assembled.Breakdown.RepoInstructions, r.tokens.Count), WarnTokens: r.cfg.AgentsMDWarnTokens,
-			Nested: nestedKept, LeftOut: nestedLeft, Incomplete: nestedIncomplete},
+			Nested: nestedKept, LeftOut: nestedLeft, Incomplete: nestedIncomplete, Name: md.name,
+			Empty: rootInstructions == "" && md.empty},
 		PreviouslyPosted: store.PreviouslyPosted{Shown: len(posted), Total: len(existing)},
 		Decisions:        []store.FindingDecision{},
 		Moved:            []store.MovedFinding{},
@@ -518,6 +521,7 @@ func (r *Reviewer) prepare(ctx context.Context, payload *webhook.Payload, skipAu
 		// AGENTS.md" tip: it may well exist.
 		agentsMDFound: rootInstructions != "" || md.empty || md.unknown || md.oversize > 0,
 		agentsMDEmpty: rootInstructions == "" && md.empty,
+		agentsMDName:  md.name,
 		totalFiles:    totalFiles,
 		diffAdded:     diffAdded,
 		diffRemoved:   diffRemoved,
@@ -747,6 +751,7 @@ func (r *Reviewer) post(ctx context.Context, plan *reviewPlan) {
 		Focus:                      focus,
 		AgentsMDFound:              plan.agentsMDFound,
 		AgentsMDEmpty:              plan.agentsMDEmpty,
+		AgentsMDName:               plan.agentsMDName,
 		AgentsMDNested:             renderNested(plan.detail.AgentsMD.Nested),
 		AgentsMDLeftOut:            renderLeft(plan.detail.AgentsMD.LeftOut),
 		AgentsMDIncomplete:         plan.detail.AgentsMD.Incomplete,

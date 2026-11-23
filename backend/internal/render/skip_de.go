@@ -30,26 +30,28 @@ func OptOutBranchSummary(l lang.Lang, keyword, branch string) string {
 		"noergler-Service gesetzt (leerer String schaltet die Funktion ab).\n"
 }
 
-// AgentsMDMissingSummary is the skip summary when AGENTS.md is required and
-// absent from both the PR branch and the target branch.
-func AgentsMDMissingSummary(l lang.Lang) string {
+// AgentsMDMissingSummary is the skip summary when the team's rules file
+// (name: AGENTS.md unless the team chose another) is required and absent
+// from both the PR branch and the target branch. A call to action: what
+// belongs in it, never what does not (user, 2026-11-23).
+func AgentsMDMissingSummary(l lang.Lang, name string) string {
 	if l == lang.EN {
-		return agentsMDMissingSummaryEN()
+		return agentsMDMissingSummaryEN(name)
 	}
-	return "### Review übersprungen — keine `AGENTS.md` gefunden 🛑\n\n" +
-		"Dieses Repository hat weder auf dem PR-Branch noch auf dem Ziel-Branch eine `AGENTS.md`. " +
-		"Projektspezifische Review-Richtlinien sind **entscheidend** für gezieltes Feedback " +
-		"mit hohem Nutzen — ohne sie bleibt nur generisches Kleinzeug, " +
+	return fmt.Sprintf("### Review übersprungen — keine `%s` gefunden 🛑\n\n", name) +
+		fmt.Sprintf("Dieses Repository hat weder auf dem PR-Branch noch auf dem Ziel-Branch eine `%s`, ", name) +
 		"deshalb wurde das Review nicht ausgeführt.\n\n" +
 		"**Was tun**\n" +
-		"- Eine `AGENTS.md` im Repo-Root anlegen, die Projektkonventionen, " +
-		"verbotene Muster und Schwerpunkte für das Review beschreibt. " +
-		"Eine `AGENTS.md` in einem Unterordner ergänzt Regeln für diesen Teil des Repos; " +
-		"die im Root ersetzt sie nicht.\n" +
-		"- Keine Projektregeln gewünscht? Eine leere `AGENTS.md` genügt; das Review " +
+		fmt.Sprintf("- Eine `%s` im Repo-Root anlegen, mit dem, was im Code nicht steht: ", name) +
+		"Invarianten, die nie brechen dürfen, Konventionen eures Teams, Entscheide und ihr Warum, " +
+		"Fallen, aus denen ihr gelernt habt. Genau daran misst das Review euren Code; " +
+		"ohne sie sieht es nur den Diff.\n" +
+		"- Ein paar Zeilen genügen für den Anfang. Regeln, die einen Merge blockieren sollen, " +
+		fmt.Sprintf("mit `[blocking]` markieren. Im Monorepo ergänzt eine `%s` im Unterordner ", name) +
+		"Regeln für diesen Teil.\n" +
+		fmt.Sprintf("- Keine Projektregeln gewünscht? Eine leere `%s` genügt; das Review ", name) +
 		"läuft dann mit allgemeinen Regeln.\n" +
-		"- Die Datei auf den PR-Branch pushen (oder in den Ziel-Branch mergen); " +
-		"das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
+		"- Die Datei pushen; das nächste Webhook-Event auf diesem PR löst ein volles Review aus.\n"
 }
 
 // DiffTooLargeSummary is the skip summary when the PR diff exceeds the byte
@@ -68,15 +70,15 @@ func DiffTooLargeSummary(l lang.Lang, limit int) string {
 		"löst ein volles Review aus.\n"
 }
 
-func agentsMDTooLargeSummaryDE(tokens, limit int, fr string) string {
-	return "### Review übersprungen — `AGENTS.md` zu gross 🛑\n\n" +
-		fmt.Sprintf("`AGENTS.md` umfasst ~%s Tokens und überschreitet das konfigurierte ", Fmt(tokens)) +
+func agentsMDTooLargeSummaryDE(name string, tokens, limit int, fr string) string {
+	return fmt.Sprintf("### Review übersprungen — `%s` zu gross 🛑\n\n", name) +
+		fmt.Sprintf("`%s` umfasst ~%s Tokens und überschreitet das konfigurierte ", name, Fmt(tokens)) +
 		fmt.Sprintf("harte Limit von %s Tokens. Zu grosse Agent-Anweisungen verdrängen ", Fmt(limit)) +
 		"den eigentlichen Diff, verschlechtern die Review-Qualität (Context Rot) und treiben " +
 		"die Inferenzkosten hoch — deshalb wurde das Review nicht ausgeführt.\n\n" +
 		"**Was tun**\n" +
-		"- `AGENTS.md` kürzen: Abschnitte zum Überfliegen für Menschen streichen, " +
-		"README-Duplikate entfernen, Prosa durch knappe Regeln ersetzen.\n" +
+		"- Behalten, was der Code nicht zeigt: Invarianten, Konventionen, Entscheide und ihr Warum. " +
+		"Streichen, was Code oder README schon sagen; Prosa durch knappe Regeln ersetzen.\n" +
 		"- Ausführliches Referenzmaterial in separate Dateien auslagern und " +
 		"verlinken; die Hauptdatei schlank halten.\n" +
 		"- Die schlankere Datei pushen; das nächste Webhook-Event auf diesem PR " +
