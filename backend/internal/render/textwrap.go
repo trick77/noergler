@@ -1,6 +1,7 @@
 package render
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -111,9 +112,45 @@ func isBlankChunk(s string) bool {
 	return strings.TrimFunc(s, unicode.IsSpace) == ""
 }
 
+// startsBlock matches a word that, first on a line, Markdown reads as
+// structure and not as prose: a list marker, a heading, a setext underline, a
+// rule, a quote, a table row or a fence. The em dash is one of them: NoEmDash
+// runs after the wrap and makes it a hyphen. A marker ends at a no-break space
+// too, as listItem and neverWrap read it. Two backticks and a NUL are a fence
+// wrapLine masked: codeSpan takes the third backtick into the span.
+var startsBlock = regexp.MustCompile("^(?:(?:[*+\\x{2022}]|[*_]{3,}|[-=" + emDash + "]+|\\p{Nd}+[.)]|#{1,6})" +
+	"(?:$|[\\s\\p{Zs}])|>|\\||```|``\\x00|~~~)")
+
+// proseBreak moves the break before chunks[end] so the next line does not
+// start with a word startsBlock matches. The word before it goes along; a
+// line with no other word to keep takes the marker instead and overflows.
+func proseBreak(chunks []string, start, end int) int {
+	next := end
+	for next < len(chunks) && isBlankChunk(chunks[next]) {
+		next++
+	}
+	if next == len(chunks) || !startsBlock.MatchString(chunks[next]) {
+		return end
+	}
+	first := start
+	for first < end && isBlankChunk(chunks[first]) {
+		first++
+	}
+	for j := end - 1; j > first; j-- {
+		if !isBlankChunk(chunks[j]) && !startsBlock.MatchString(chunks[j]) {
+			return j
+		}
+	}
+	for next < len(chunks) && (isBlankChunk(chunks[next]) || startsBlock.MatchString(chunks[next])) {
+		next++
+	}
+	return next
+}
+
 // wrapChunks greedily fills lines from the chunk list. Long words are never
 // broken and there is no line cap: a chunk wider than the line is emitted on
-// a line of its own and allowed to overflow.
+// a line of its own and allowed to overflow. No line it breaks off starts
+// with Markdown structure (proseBreak).
 func wrapChunks(chunks []string, width int, initialIndent, subsequentIndent string) []string {
 	var lines []string
 	if width <= 0 {
@@ -134,24 +171,24 @@ func wrapChunks(chunks []string, width int, initialIndent, subsequentIndent stri
 			continue
 		}
 
-		var cur []string
+		start := i
 		curLen := 0
 		for i < len(chunks) {
 			l := utf8.RuneCountInString(chunks[i])
 			if curLen+l > avail {
 				break
 			}
-			cur = append(cur, chunks[i])
 			curLen += l
 			i++
 		}
 
 		// Long words are never broken: a chunk too big for any line goes on
 		// this line alone rather than being chopped.
-		if len(cur) == 0 && i < len(chunks) {
-			cur = append(cur, chunks[i])
+		if i == start {
 			i++
 		}
+		i = proseBreak(chunks, start, i)
+		cur := chunks[start:i]
 
 		// A trailing whitespace chunk is dropped.
 		if len(cur) > 0 && isBlankChunk(cur[len(cur)-1]) {
