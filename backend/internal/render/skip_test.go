@@ -131,9 +131,6 @@ func TestSkipSummariesAreWrapped(t *testing.T) {
 				if n := utf8.RuneCountInString(line); n > WrapWidth {
 					t.Errorf("%s %s summary: line of %d columns: %q", l, what, n, line)
 				}
-				if strings.Contains(line, emDash) {
-					t.Errorf("%s %s summary: an em dash in the body, a list item when it starts a line: %q", l, what, line)
-				}
 			}
 			// Links whole on their line, titles included.
 			var links []string

@@ -152,6 +152,66 @@ func TestIdempotent(t *testing.T) {
 	}
 }
 
+// A break never makes structure out of prose: whatever the column the word
+// lands on, no line the wrap added starts with a Markdown block marker, before
+// or after NoEmDash, and no text is lost.
+func TestWrapNeverStartsALineWithABlockMarker(t *testing.T) {
+	// The literal marker is the oracle, never startsBlock itself.
+	words := func(s string) []string { return strings.FieldsFunc(s, isWrapWhitespace) }
+	for _, marker := range []string{
+		"-", "*", "+", "•", "—", "1.", "28.", "3)", "#", "##", ">", ">=5", "---", "——", "=", "==", "***", "___",
+		"1.\u00a0Januar", "-\u00a0foo", "#\u00a0x", "```go fmt```", "```", "~~~",
+	} {
+		first := words(marker)[0]
+		for _, prefix := range []string{"", "- ", "1. "} {
+			for n := 60; n <= 2*WrapWidth; n++ {
+				text := strings.Repeat("word ", n/5) + strings.Repeat("x", n%5+1)
+				in := prefix + text + " " + marker + " rest " + marker + " " + marker + " of the sentence — it goes on for a while " + marker
+				got := WrapProse(in)
+				if strings.Join(words(got), " ") != in {
+					t.Fatalf("%q after %d columns: text changed\n got: %q", marker, n, got)
+				}
+				for _, line := range strings.Split(got, "\n")[1:] {
+					if words(line)[0] == first {
+						t.Fatalf("%q after %d columns: line starts with it: %q", marker, n, line)
+					}
+				}
+				if marker != "```" && strings.Contains(NoEmDash(got), emDash) { // two ``` are a code span
+					t.Fatalf("%q after %d columns: an em dash is left: %q", marker, n, NoEmDash(got))
+				}
+				for _, line := range strings.Split(got, "\n") {
+					if w := utf8.RuneCountInString(line); w > WrapWidth {
+						t.Fatalf("%q after %d columns: line of %d columns: %q", marker, n, w, line)
+					}
+				}
+			}
+		}
+	}
+}
+
+// The markers that only count when a line holds one of them: two pipes are a
+// table row and pass through, two fences a code span.
+func TestWrapNeverStartsALineWithALoneMarker(t *testing.T) {
+	for _, marker := range []string{"|", "```"} {
+		for n := 60; n <= 2*WrapWidth; n++ {
+			got := WrapProse(strings.Repeat("word ", n/5) + strings.Repeat("x", n%5+1) + " " + marker + " the rest of the sentence that goes on for a while")
+			if strings.Contains(got, "\n"+marker) {
+				t.Fatalf("%q after %d columns: %q", marker, n, got)
+			}
+		}
+	}
+}
+
+// With no other word to move down, the marker stays on the line and the line
+// overflows.
+func TestWrapMarkerAfterAnOverlongWordOverflows(t *testing.T) {
+	url := "https://bitbucket.example.com/" + strings.Repeat("x", WrapWidth)
+	got := WrapProse(url + " — - the rest of the sentence")
+	if want := url + " — -\nthe rest of the sentence"; got != want {
+		t.Errorf("\n got:  %q\n want: %q", got, want)
+	}
+}
+
 func TestLongTokenNeverSplit(t *testing.T) {
 	url := "https://bitbucket.example.com/projects/FOO/repos/bar/pull-requests/42"
 	got := WrapProse("See the discussion at " + url + " for the full rationale here and more words to push it over the cap.")

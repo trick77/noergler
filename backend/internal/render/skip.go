@@ -61,8 +61,7 @@ func ParseCustomLink(raw string) (Link, bool) {
 
 // The skip summaries are hard-wrapped like the review summary, title and
 // further-reading list aside. The no-break space in a link title keeps the
-// break out of the link. No em dash in the body: one that starts a wrapped
-// line is a list item once NoEmDash made it a hyphen.
+// break out of the link.
 
 // optOutBranchSummaryEN is the skip summary for a branch carrying the opt-out
 // keyword. No LLM or Jira call was made.
