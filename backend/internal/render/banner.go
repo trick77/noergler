@@ -175,6 +175,7 @@ func CostBannerSaysBlocked(body string) bool {
 		return false
 	}
 	// The banner alone: summary text below it may quote the sentence.
-	banner := strings.TrimSuffix(body, rest)
+	// On one line: a banner posted as its own comment is wrapped.
+	banner := strings.Join(strings.Fields(strings.TrimSuffix(body, rest)), " ")
 	return strings.Contains(banner, costBlockedEN) || strings.Contains(banner, costBlockedDE)
 }

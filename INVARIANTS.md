@@ -391,7 +391,10 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   rendered body compared with a fetched one goes through `NoEmDash` first.
 - Model prose is hard-wrapped (`WrapProse`, Bitbucket shows every newline):
   summary, inline findings and replies alike (user, 2026-10-28; replies in
-  `outgoing`), lists at the prose width, never earlier. Fences (``` and
+  `outgoing`), lists at the prose width, never earlier. So are the fixed
+  notices posted as their own comment (user, 2026-11-23); a banner put on a
+  summary stays one row, its stripper matches that row, and the
+  further-reading links stay whole. Fences (``` and
   ~~~, read the same by `NoEmDash`), indented code, headings, quotes and
   table rows pass through unbroken.
 - `.properties` size gate is NOT in `IsReviewable` (the rollup must count the

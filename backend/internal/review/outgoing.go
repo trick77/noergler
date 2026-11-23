@@ -9,8 +9,8 @@ import (
 // outgoing is the Bitbucket client with what every comment the pipeline
 // writes needs on its way out, in one place so no post can skip it: no em
 // dash (render.NoEmDash), and a reply hard-wrapped like the summary
-// (render.WrapProse; user, 2026-10-28). Summaries, inline comments and
-// banners are wrapped where they are rendered, field by field.
+// (render.WrapProse; user, 2026-10-28). Summaries and inline comments are
+// wrapped where they are rendered, field by field; skip notices whole.
 type outgoing struct{ BitbucketClient }
 
 // withOutgoing wraps c; nil stays nil, the Reviewer that never reaches
