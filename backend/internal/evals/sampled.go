@@ -222,6 +222,98 @@ func agreement(rows []Agreement, expected []Expected, samples [][]inference.Revi
 	}
 }
 
+// baitPrefix names the bait controls: a correct diff with one temptation of
+// the kind teams complained about (2026-11-23: a failure built on a backend
+// status, a viewport, a business rule or a layout no shown code proves).
+// Their rate is reported apart from the other controls, which tempt with
+// other things.
+const baitPrefix = "bait-"
+
+// ControlRate is what one control's samples reported. A control expects no
+// finding, so every finding that passed validation on it is a false
+// positive; byte-identical repeats in one sample count once, as in match.
+// Per completed sample, of which there are Samples; Clean is the share of
+// those with none.
+type ControlRate struct {
+	Case                    string
+	Samples                 int
+	Findings, Issues, Clean float64
+}
+
+// ControlSummary pools the controls: findings per completed review, for the
+// bait controls and for the rest. It is the number a model is compared by;
+// ControlsClean, a product over every control, falls to zero at the first
+// finding anywhere and says nothing about how many.
+type ControlSummary struct {
+	Bait, Other           float64
+	BaitCases, OtherCases int
+	// Incomplete is how many controls lack a sample: a run with any is not
+	// comparable with a full one.
+	Incomplete int
+}
+
+// controlRate scores one control's completed samples; Samples is 0 when none
+// completed.
+func controlRate(c SampledCase) ControlRate {
+	r := ControlRate{Case: c.Case}
+	for _, sm := range c.Samples {
+		if !completed(sm.Result) {
+			continue
+		}
+		r.Samples++
+		if len(sm.Findings) == 0 {
+			r.Clean++
+		}
+		seen := map[string]bool{}
+		for _, f := range sm.Findings {
+			key := findingKey(f)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			r.Findings++
+			if f.Severity == "issue" {
+				r.Issues++
+			}
+		}
+	}
+	if n := float64(r.Samples); n > 0 {
+		r.Findings, r.Issues, r.Clean = r.Findings/n, r.Issues/n, r.Clean/n
+	}
+	return r
+}
+
+// controlSummary pools the rates by kind, every completed review alike: a
+// case short of samples weighs less, and is counted as incomplete.
+func controlSummary(rates []ControlRate, samples int) ControlSummary {
+	var s ControlSummary
+	var bait, other int
+	for _, r := range rates {
+		if r.Samples < samples {
+			s.Incomplete++
+		}
+		if r.Samples == 0 {
+			continue
+		}
+		if strings.HasPrefix(r.Case, baitPrefix) {
+			s.Bait += r.Findings * float64(r.Samples)
+			s.BaitCases++
+			bait += r.Samples
+			continue
+		}
+		s.Other += r.Findings * float64(r.Samples)
+		s.OtherCases++
+		other += r.Samples
+	}
+	if bait > 0 {
+		s.Bait /= float64(bait)
+	}
+	if other > 0 {
+		s.Other /= float64(other)
+	}
+	return s
+}
+
 // SampledCase is one case's samples and what each view makes of them.
 type SampledCase struct {
 	Case    string
@@ -267,7 +359,11 @@ type Sampled struct {
 	Views   []View
 	// Agreement has one row per vote count, 1 to Samples.
 	Agreement []Agreement
-	Tokens    TokenMeans
+	// Controls are the false-positive rates of the cases that expect no
+	// finding, in case order; ControlFindings pools them.
+	Controls        []ControlRate
+	ControlFindings ControlSummary
+	Tokens          TokenMeans
 }
 
 // RunSampled reviews every case samples times and scores every view.
@@ -330,6 +426,7 @@ func RunSampled(ctx context.Context, client Reviewer, template string, cases []C
 // a single new call.
 func (s *Sampled) Rescore(cases []Case) error {
 	s.Seeded = 0
+	s.Controls = nil
 	s.Agreement = make([]Agreement, s.Samples)
 	for i := range s.Agreement {
 		s.Agreement[i].Votes = i + 1
@@ -354,7 +451,11 @@ func (s *Sampled) Rescore(cases []Case) error {
 		sc.Views = caseViews(expected, findings)
 		agreement(s.Agreement, expected, findings)
 		s.Seeded += sc.Seeded
+		if len(expected) == 0 {
+			s.Controls = append(s.Controls, controlRate(*sc))
+		}
 	}
+	s.ControlFindings = controlSummary(s.Controls, s.Samples)
 	s.summarize()
 	return nil
 }
@@ -626,6 +727,22 @@ func (s Sampled) Report(w io.Writer) {
 	for _, a := range s.Agreement {
 		p("%-6d %12s %12s\n", a.Votes,
 			fmt.Sprintf("%d (%d)", a.Real, a.RealIssue), fmt.Sprintf("%d (%d)", a.Invented, a.InventedIssue))
+	}
+	if len(s.Controls) > 0 {
+		p("\nfalse positives on controls, per completed sample\n%-34s %9s %7s %7s\n", "case", "findings", "issues", "clean")
+		for _, r := range s.Controls {
+			note := ""
+			if r.Samples < s.Samples {
+				note = fmt.Sprintf(" INCOMPLETE %d/%d", r.Samples, s.Samples)
+			}
+			p("%-34s %9.2f %7.2f %7.2f%s\n", r.Case, r.Findings, r.Issues, r.Clean, note)
+		}
+		c := s.ControlFindings
+		p("findings per review: bait %.2f over %d case(s), other controls %.2f over %d\n",
+			c.Bait, c.BaitCases, c.Other, c.OtherCases)
+		if c.Incomplete > 0 {
+			p("%d control(s) lack a sample: not comparable with a full run\n", c.Incomplete)
+		}
 	}
 	t := s.Tokens
 	p("\ntokens per call: cold prompt %.0f (cached %.0f) completion %.0f; warm prompt %.0f (cached %.0f) completion %.0f\n",

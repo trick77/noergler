@@ -1,0 +1,13 @@
+{
+  "name": "bait-cache-get-only",
+  "description": "Bait control, a backend variant of the deliberate-restriction pattern. The cache now serves GET only instead of everything but POST, PUT and DELETE, which also stops PATCH from being answered from cache. The comment says why. The temptation: HEAD and OPTIONS lose the cache. That is the stated choice, and their cost is a guess about traffic no shown code holds. Nothing to report.",
+  "files": [
+    {
+      "path": "internal/httpcache/middleware.go",
+      "diff": "@@ -5,10 +5,11 @@\n // Middleware serves cached responses. It is mounted only in front of the\n // public catalogue routes, which answer the same to every caller.\n //\n-// Writes always reach next.\n+// Only GET is cached: every other method changes state or is too rare to be\n+// worth an entry, and always reaches next.\n func Middleware(c *Cache, next http.Handler) http.Handler {\n \treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n-\t\tif r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {\n+\t\tif r.Method != http.MethodGet {\n \t\t\tnext.ServeHTTP(w, r)\n \t\t\treturn\n \t\t}",
+      "content": "package httpcache\n\nimport \"net/http\"\n\n// Middleware serves cached responses. It is mounted only in front of the\n// public catalogue routes, which answer the same to every caller.\n//\n// Only GET is cached: every other method changes state or is too rare to be\n// worth an entry, and always reaches next.\nfunc Middleware(c *Cache, next http.Handler) http.Handler {\n\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n\t\tif r.Method != http.MethodGet {\n\t\t\tnext.ServeHTTP(w, r)\n\t\t\treturn\n\t\t}\n\t\tkey := r.URL.RequestURI()\n\t\tif e, ok := c.Get(key); ok {\n\t\t\te.WriteTo(w)\n\t\t\treturn\n\t\t}\n\t\trec := newRecorder(w)\n\t\tnext.ServeHTTP(rec, r)\n\t\tif rec.status == http.StatusOK {\n\t\t\tc.Set(key, rec.entry())\n\t\t}\n\t})\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

@@ -1,0 +1,13 @@
+{
+  "name": "bait-style-and-tests",
+  "description": "Bait control for findings outside the remit. A correct loyalty discount: two percent a year, capped at ten. No docstring, two literals, no test in the diff, and a negative tenure no shown caller passes. Missing docs and tests are out of scope unless guidelines ask; the literals are style; the negative tenure has no realistic input. Nothing to report.",
+  "files": [
+    {
+      "path": "app/pricing/discounts.py",
+      "diff": "@@ -6,3 +6,8 @@\n def apply_percentage(amount: Decimal, percent: Decimal) -> Decimal:\n     \"\"\"Reduces amount by percent, rounded to the cent.\"\"\"\n     return (amount * (Decimal(100) - percent) / Decimal(100)).quantize(CENT, rounding=ROUND_HALF_UP)\n+\n+\n+def loyalty_discount(amount: Decimal, years: int) -> Decimal:\n+    percent = min(Decimal(years) * Decimal(2), Decimal(10))\n+    return apply_percentage(amount, percent)",
+      "content": "from decimal import ROUND_HALF_UP, Decimal\n\nCENT = Decimal(\"0.01\")\n\n\ndef apply_percentage(amount: Decimal, percent: Decimal) -> Decimal:\n    \"\"\"Reduces amount by percent, rounded to the cent.\"\"\"\n    return (amount * (Decimal(100) - percent) / Decimal(100)).quantize(CENT, rounding=ROUND_HALF_UP)\n\n\ndef loyalty_discount(amount: Decimal, years: int) -> Decimal:\n    percent = min(Decimal(years) * Decimal(2), Decimal(10))\n    return apply_percentage(amount, percent)\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

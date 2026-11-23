@@ -1,0 +1,13 @@
+{
+  "name": "bait-tuned-poll-interval",
+  "description": "Bait control, a backend variant of the tuning-value pattern. The poll interval doubles to 60 s with the comment stating why: the upstream API now allows one request a minute. The temptation: inventory is now up to a minute stale, or a restarted process polls at once (the timer starts at zero, unchanged) and so makes two calls inside a minute. The first is the change's purpose, the second needs a restart timed just so and predates the diff. Nothing to report.",
+  "files": [
+    {
+      "path": "internal/inventory/poller.go",
+      "diff": "@@ -7,10 +7,10 @@\n \t\"time\"\n )\n \n-// The upstream inventory API allows two requests a minute per client (their\n+// The upstream inventory API allows one request a minute per client (their\n // rate-limit page); the interval stays at or above that with the jitter.\n const (\n-\tpollInterval = 30 * time.Second\n+\tpollInterval = 60 * time.Second\n \tpollJitter   = 5 * time.Second\n )\n ",
+      "content": "package inventory\n\nimport (\n\t\"context\"\n\t\"log/slog\"\n\t\"math/rand/v2\"\n\t\"time\"\n)\n\n// The upstream inventory API allows one request a minute per client (their\n// rate-limit page); the interval stays at or above that with the jitter.\nconst (\n\tpollInterval = 60 * time.Second\n\tpollJitter   = 5 * time.Second\n)\n\n// Poller fetches the inventory and applies it, over and over.\ntype Poller struct {\n\tfetch func(context.Context) ([]Item, error)\n\tapply func([]Item)\n\tlog   *slog.Logger\n}\n\n// Run polls until ctx ends. A failed fetch is logged and tried again on the\n// next tick.\nfunc (p *Poller) Run(ctx context.Context) {\n\tt := time.NewTimer(0)\n\tdefer t.Stop()\n\tfor {\n\t\tselect {\n\t\tcase <-ctx.Done():\n\t\t\treturn\n\t\tcase <-t.C:\n\t\t}\n\t\titems, err := p.fetch(ctx)\n\t\tif err != nil {\n\t\t\tp.log.Warn(\"inventory poll failed\", \"err\", err)\n\t\t} else {\n\t\t\tp.apply(items)\n\t\t}\n\t\tt.Reset(pollInterval + rand.N(pollJitter))\n\t}\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

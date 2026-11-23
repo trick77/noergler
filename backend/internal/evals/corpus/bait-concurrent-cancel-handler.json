@@ -1,0 +1,13 @@
+{
+  "name": "bait-concurrent-cancel-handler",
+  "description": "Bait control, a backend variant of the second-actor pattern. A Cancel handler that hands the work to the store and maps its errors the way Get beside it does, a refused cancel to 409. The temptation: two cancels race, or the order changes between them. Whether the store's cancel is atomic is in a file not shown; nothing shown makes the race reachable, and the handler maps every outcome. Nothing to report.",
+  "files": [
+    {
+      "path": "internal/api/orders.go",
+      "diff": "@@ -25,3 +25,19 @@\n \t}\n \twriteJSON(w, o)\n }\n+\n+// Cancel cancels an open order. The store refuses an order that is no longer\n+// open with ErrNotCancellable.\n+func (h Orders) Cancel(w http.ResponseWriter, r *http.Request) {\n+\terr := h.Store.Cancel(r.Context(), r.PathValue(\"id\"))\n+\tswitch {\n+\tcase errors.Is(err, orders.ErrNotFound):\n+\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n+\tcase errors.Is(err, orders.ErrNotCancellable):\n+\t\thttp.Error(w, \"order is no longer open\", http.StatusConflict)\n+\tcase err != nil:\n+\t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n+\tdefault:\n+\t\tw.WriteHeader(http.StatusNoContent)\n+\t}\n+}",
+      "content": "package api\n\nimport (\n\t\"errors\"\n\t\"net/http\"\n\n\t\"example.com/shop/internal/orders\"\n)\n\n// Orders serves the order endpoints.\ntype Orders struct {\n\tStore *orders.Store\n}\n\n// Get returns one order.\nfunc (h Orders) Get(w http.ResponseWriter, r *http.Request) {\n\to, err := h.Store.Order(r.Context(), r.PathValue(\"id\"))\n\tswitch {\n\tcase errors.Is(err, orders.ErrNotFound):\n\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n\t\treturn\n\tcase err != nil:\n\t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n\t\treturn\n\t}\n\twriteJSON(w, o)\n}\n\n// Cancel cancels an open order. The store refuses an order that is no longer\n// open with ErrNotCancellable.\nfunc (h Orders) Cancel(w http.ResponseWriter, r *http.Request) {\n\terr := h.Store.Cancel(r.Context(), r.PathValue(\"id\"))\n\tswitch {\n\tcase errors.Is(err, orders.ErrNotFound):\n\t\thttp.Error(w, \"not found\", http.StatusNotFound)\n\tcase errors.Is(err, orders.ErrNotCancellable):\n\t\thttp.Error(w, \"order is no longer open\", http.StatusConflict)\n\tcase err != nil:\n\t\thttp.Error(w, \"store\", http.StatusInternalServerError)\n\tdefault:\n\t\tw.WriteHeader(http.StatusNoContent)\n\t}\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": []
+}

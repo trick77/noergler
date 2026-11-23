@@ -1,0 +1,33 @@
+{
+  "name": "edge-guard-inverted",
+  "description": "Twin of bait-deliberate-scope-guard: the same handler and comment, but the guard lacks its negation. It returns on narrow screens and closes the panel on wide ones, the opposite of the comment above it. Seeded.",
+  "files": [
+    {
+      "path": "src/app/shared/side-panel/side-panel.component.ts",
+      "diff": "@@ -4,6 +4,7 @@\n   selector: 'app-side-panel',\n   templateUrl: './side-panel.component.html',\n   styleUrl: './side-panel.component.scss',\n+  host: { '(focusout)': 'onFocusOut($event)' },\n })\n export class SidePanelComponent {\n   private readonly element = inject(ElementRef<HTMLElement>);\n@@ -12,4 +13,14 @@\n   toggle(): void {\n     this.isOpen.update((open) => !open);\n   }\n+\n+  // Only narrow screens close the panel when focus moves to a control outside it.\n+  onFocusOut(event: FocusEvent): void {\n+    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;\n+    const next = event.relatedTarget;\n+    if (!(next instanceof Node) || this.element.nativeElement.contains(next)) {\n+      return;\n+    }\n+    this.isOpen.set(false);\n+  }\n }",
+      "content": "import { Component, ElementRef, inject, signal } from '@angular/core';\n\n@Component({\n  selector: 'app-side-panel',\n  templateUrl: './side-panel.component.html',\n  styleUrl: './side-panel.component.scss',\n  host: { '(focusout)': 'onFocusOut($event)' },\n})\nexport class SidePanelComponent {\n  private readonly element = inject(ElementRef<HTMLElement>);\n  readonly isOpen = signal(false);\n\n  toggle(): void {\n    this.isOpen.update((open) => !open);\n  }\n\n  // Only narrow screens close the panel when focus moves to a control outside it.\n  onFocusOut(event: FocusEvent): void {\n    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;\n    const next = event.relatedTarget;\n    if (!(next instanceof Node) || this.element.nativeElement.contains(next)) {\n      return;\n    }\n    this.isOpen.set(false);\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "focus-guard-inverted",
+      "file": "src/app/shared/side-panel/side-panel.component.ts",
+      "lines": [
+        17,
+        19
+      ],
+      "keywords": [
+        "inverted",
+        "negation",
+        "opposite",
+        "wide",
+        "desktop",
+        "narrow",
+        "mobile",
+        "reversed"
+      ],
+      "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+    }
+  ]
+}

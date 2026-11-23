@@ -1,0 +1,38 @@
+{
+  "name": "edge-early-return-skips-check",
+  "description": "Twin of bait-state-excluded-by-domain: the same handler change, but the response type's doc now says a notice can be reported ahead of time while a leave period is still open, and that the open period still needs its end date. The shown code makes the combination reachable, and the new early return then skips the end-date dialog that period needs. Seeded.",
+  "files": [
+    {
+      "path": "src/app/claims/api/leave-api.service.ts",
+      "diff": "@@ -9,8 +9,19 @@\n   validUntil?: string;\n }\n \n+export interface ReturnNotice {\n+  id: string;\n+  reportedAt: string;\n+}\n+\n export interface LeaveResponse {\n   leavePeriods: LeavePeriod[];\n+  /**\n+   * Return notices already reported for the claim. A notice can be\n+   * reported ahead of time, while a leave period is still open; that\n+   * period then still needs its end date.\n+   */\n+  returnNotices?: ReturnNotice[];\n }\n \n @Injectable({ providedIn: 'root' })",
+      "content": "import { HttpClient } from '@angular/common/http';\nimport { Injectable, inject } from '@angular/core';\nimport { firstValueFrom } from 'rxjs';\n\nexport interface LeavePeriod {\n  id: string;\n  validFrom: string;\n  /** Empty while the period is open. */\n  validUntil?: string;\n}\n\nexport interface ReturnNotice {\n  id: string;\n  reportedAt: string;\n}\n\nexport interface LeaveResponse {\n  leavePeriods: LeavePeriod[];\n  /**\n   * Return notices already reported for the claim. A notice can be\n   * reported ahead of time, while a leave period is still open; that\n   * period then still needs its end date.\n   */\n  returnNotices?: ReturnNotice[];\n}\n\n@Injectable({ providedIn: 'root' })\nexport class LeaveApiService {\n  private readonly http = inject(HttpClient);\n\n  getLeave(claimNumber: string): Promise<LeaveResponse> {\n    return firstValueFrom(this.http.get<LeaveResponse>(`/api/claims/${encodeURIComponent(claimNumber)}/leave`));\n  }\n}\n",
+      "content_fetched": true
+    },
+    {
+      "path": "src/app/claims/claim-detail/claim-detail.component.ts",
+      "diff": "@@ -22,8 +22,14 @@\n     $event.preventDefault();\n     this.analytics.sendCtaClick('Report full return to work', 'link');\n     const claimNumber = this.claim().claimNumber ?? '';\n-    const { leavePeriods } =\n+    const { leavePeriods, returnNotices } =\n       await this.leaveApi.getLeave(claimNumber);\n+    if (returnNotices?.length) {\n+      this.leaveModal\n+        .openExistingReturnNotice(this.elementRef, claimNumber, returnNotices[0].id)\n+        .subscribe(() => void this.router.navigate(['return-notice', 'new', claimNumber]));\n+      return;\n+    }\n     if (leavePeriods.length === 0) {\n       this.leaveModal\n         .openNoLeavePeriod(this.elementRef)",
+      "content": "import { Component, ElementRef, inject } from '@angular/core';\nimport { Router } from '@angular/router';\n\nimport { AnalyticsService } from '../../shared/analytics/analytics.service';\nimport { LeaveApiService } from '../api/leave-api.service';\nimport { LeaveModalService } from '../leave/services/leave-modal.service';\nimport { ClaimStore } from '../claim.store';\n\n@Component({\n  selector: 'app-claim-detail',\n  templateUrl: './claim-detail.component.html',\n})\nexport class ClaimDetailComponent {\n  private readonly analytics = inject(AnalyticsService);\n  private readonly leaveApi = inject(LeaveApiService);\n  private readonly leaveModal = inject(LeaveModalService);\n  private readonly router = inject(Router);\n  private readonly elementRef = inject(ElementRef);\n  private readonly claim = inject(ClaimStore).claim;\n\n  protected async onReportReturnClick($event: MouseEvent): Promise<void> {\n    $event.preventDefault();\n    this.analytics.sendCtaClick('Report full return to work', 'link');\n    const claimNumber = this.claim().claimNumber ?? '';\n    const { leavePeriods, returnNotices } =\n      await this.leaveApi.getLeave(claimNumber);\n    if (returnNotices?.length) {\n      this.leaveModal\n        .openExistingReturnNotice(this.elementRef, claimNumber, returnNotices[0].id)\n        .subscribe(() => void this.router.navigate(['return-notice', 'new', claimNumber]));\n      return;\n    }\n    if (leavePeriods.length === 0) {\n      this.leaveModal\n        .openNoLeavePeriod(this.elementRef)\n        .subscribe(() => this.openLeavePeriodForm());\n      return;\n    }\n    const open = leavePeriods.filter((p) => !p.validUntil);\n    if (open.length) {\n      this.leaveModal\n        .openEndDate(this.elementRef, claimNumber, open[0].id)\n        .subscribe(() => void this.router.navigate(['return-notice', 'new', claimNumber]));\n      return;\n    }\n    void this.router.navigate(['return-notice', 'new', claimNumber]);\n  }\n\n  private openLeavePeriodForm(): void {\n    void this.router.navigate(['leave-period', 'new', this.claim().claimNumber]);\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "notice-skips-end-date",
+      "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+      "lines": [
+        27,
+        39
+      ],
+      "keywords": [
+        "end date",
+        "open period",
+        "open leave",
+        "validUntil",
+        "skip",
+        "bypass",
+        "never reach"
+      ],
+      "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+    }
+  ]
+}

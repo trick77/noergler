@@ -1,0 +1,33 @@
+{
+  "name": "edge-failure-reported-as-success",
+  "description": "A seeded edge case beside the second-actor baits: a withdraw action that swallows every error and then shows a success toast. Any failed call, a plain network error included, tells the user the request was withdrawn when it was not. No second actor needed; the shown code proves it. Seeded.",
+  "files": [
+    {
+      "path": "src/app/bookings/booking-detail/booking-detail.component.ts",
+      "diff": "@@ -17,6 +17,16 @@\n   readonly bookingNumber = input.required<string>();\n   readonly changeRequestId = input.required<string>();\n \n+  protected async withdrawChangeRequest(): Promise<void> {\n+    try {\n+      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n+    } catch {\n+      // The reload below shows whatever state the booking is in.\n+    }\n+    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n+    await this.reload();\n+  }\n+\n   protected async reload(): Promise<void> {\n     await firstValueFrom(this.api.refreshBooking(this.bookingNumber()));\n   }",
+      "content": "import { Component, inject, input } from '@angular/core';\nimport { firstValueFrom } from 'rxjs';\nimport { TranslateService } from '@ngx-translate/core';\n\nimport { BookingsApiService } from '../api/bookings-api.service';\nimport { ToastService } from '../../shared/toast/toast.service';\n\n@Component({\n  selector: 'app-booking-detail',\n  templateUrl: './booking-detail.component.html',\n})\nexport class BookingDetailComponent {\n  private readonly api = inject(BookingsApiService);\n  private readonly toast = inject(ToastService);\n  private readonly translate = inject(TranslateService);\n\n  readonly bookingNumber = input.required<string>();\n  readonly changeRequestId = input.required<string>();\n\n  protected async withdrawChangeRequest(): Promise<void> {\n    try {\n      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n    } catch {\n      // The reload below shows whatever state the booking is in.\n    }\n    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n    await this.reload();\n  }\n\n  protected async reload(): Promise<void> {\n    await firstValueFrom(this.api.refreshBooking(this.bookingNumber()));\n  }\n}\n",
+      "content_fetched": true
+    }
+  ],
+  "expected": [
+    {
+      "id": "failure-toasted-as-success",
+      "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+      "lines": [
+        20,
+        26
+      ],
+      "keywords": [
+        "success",
+        "swallow",
+        "even when",
+        "even if",
+        "regardless",
+        "fail",
+        "error is ignored",
+        "ignored"
+      ],
+      "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+    }
+  ]
+}

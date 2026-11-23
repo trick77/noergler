@@ -1,0 +1,3560 @@
+{
+ "Model": "mimo-v2.6-pro",
+ "Effort": "high",
+ "Samples": 5,
+ "Seeded": 4,
+ "Cases": [
+  {
+   "Case": "bait-breakpoint-sync",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-breakpoint-sync",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6152,
+      "CachedTokens": 0,
+      "CompletionTokens": 1308,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-breakpoint-sync",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6152,
+      "CachedTokens": 6144,
+      "CompletionTokens": 646,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-breakpoint-sync",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6152,
+      "CachedTokens": 6144,
+      "CompletionTokens": 883,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-breakpoint-sync",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6152,
+      "CachedTokens": 6144,
+      "CompletionTokens": 534,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-breakpoint-sync",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6152,
+      "CachedTokens": 6144,
+      "CompletionTokens": 370,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-cache-get-only",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-cache-get-only",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6226,
+      "CachedTokens": 0,
+      "CompletionTokens": 1583,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-cache-get-only",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6226,
+      "CachedTokens": 6144,
+      "CompletionTokens": 475,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-cache-get-only",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6226,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1183,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-cache-get-only",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6226,
+      "CachedTokens": 1152,
+      "CompletionTokens": 356,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-cache-get-only",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6226,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1250,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-concurrent-cancel-handler",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-concurrent-cancel-handler",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6340,
+      "CachedTokens": 4096,
+      "CompletionTokens": 687,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-cancel-handler",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6340,
+      "CachedTokens": 6272,
+      "CompletionTokens": 627,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-cancel-handler",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6340,
+      "CachedTokens": 6272,
+      "CompletionTokens": 872,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-cancel-handler",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6340,
+      "CachedTokens": 6272,
+      "CompletionTokens": 483,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-cancel-handler",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6340,
+      "CachedTokens": 6272,
+      "CompletionTokens": 696,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-concurrent-mark-read",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-concurrent-mark-read",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6221,
+      "CachedTokens": 4096,
+      "CompletionTokens": 453,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-mark-read",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6221,
+      "CachedTokens": 6144,
+      "CompletionTokens": 639,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-mark-read",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6221,
+      "CachedTokens": 6144,
+      "CompletionTokens": 878,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-mark-read",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6221,
+      "CachedTokens": 6144,
+      "CompletionTokens": 366,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-mark-read",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6221,
+      "CachedTokens": 6144,
+      "CompletionTokens": 665,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-concurrent-withdraw-dialog",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-concurrent-withdraw-dialog",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6600,
+      "CachedTokens": 4096,
+      "CompletionTokens": 435,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-withdraw-dialog",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6600,
+      "CachedTokens": 6528,
+      "CompletionTokens": 399,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-withdraw-dialog",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6600,
+      "CachedTokens": 6528,
+      "CompletionTokens": 414,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-withdraw-dialog",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6600,
+      "CachedTokens": 6528,
+      "CompletionTokens": 746,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-concurrent-withdraw-dialog",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6600,
+      "CachedTokens": 6528,
+      "CompletionTokens": 469,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-deliberate-scope-guard",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-deliberate-scope-guard",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 37,
+       "Severity": "suggestion",
+       "Comment": "The host element only receives `pointerup` when the button is released over the panel, so `pointerInteractionInside` can be left `true` indefinitely: press inside the panel and release outside it (mouse drag out of the panel, or a touch that is cancelled as a scroll via `pointercancel`). Afterwards, on a narrow screen, tapping any non-focusable area outside the panel produces a `focusout` with `relatedTarget === null`, the guard returns early, and the panel stays open even though focus has left it. The stuck flag keeps swallowing such closes until a `pointerup` happens to land back on the panel.",
+       "Confidence": 85,
+       "Headline": "Pointer flag can stick and block the narrow-screen focusout close",
+       "Suggestion": "    '(window:pointerup)': 'onPointerUp()',",
+       "Evidence": [
+        "    '(pointerup)': 'onPointerUp()',",
+        "    // Tapping non-focusable help text may blur the trigger without leaving the panel.",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {",
+        "      return;",
+        "    }"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6544,
+      "CachedTokens": 4096,
+      "CompletionTokens": 4015,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-deliberate-scope-guard",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 37,
+       "Severity": "issue",
+       "Comment": "`pointerInteractionInside` is only cleared when a `pointerup` reaches the host, so any gesture that ends outside the panel or gets cancelled leaves it stuck at `true` — a touch scroll inside the panel is the common case, since the browser fires `pointercancel` rather than `pointerup` when it takes over the gesture (same for a mouse drag that is released outside the panel). After that, tapping non-focusable content outside the panel blurs panel content with `relatedTarget === null`, this guard returns early, and the panel no longer closes on narrow screens: the close-on-focusout behaviour added here silently stops working until the next `pointerup` inside the panel. Reset the flag on `pointercancel` and on a window-level `pointerup`, or replace it with a short timestamp check on the last `pointerdown`.",
+       "Confidence": 85,
+       "Headline": "Pointer-interaction flag sticks true when the gesture ends outside the panel",
+       "Suggestion": null,
+       "Evidence": [
+        "  onPointerUp(): void {",
+        "    this.pointerInteractionInside = false;",
+        "  }",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {",
+        "      return;"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6544,
+      "CachedTokens": 6528,
+      "CompletionTokens": 8899,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-deliberate-scope-guard",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 10,
+       "Severity": "suggestion",
+       "Comment": "The `(pointerdown)`/`(pointerup)` handlers are bound to the panel host, so a pointer pressed inside the panel and released outside never fires `onPointerUp` and leaves `pointerInteractionInside` stuck at `true`. On the next `focusout` with `relatedTarget === null` (e.g., Firefox or Safari blurring when the user clicks non-focusable content outside, or focus moving to browser chrome), the stale flag suppresses the close and the panel stays open. Reachable with mouse or pen input on a screen at most 599px wide: drag from inside the panel to outside before releasing, then perform an action that blurs the inner trigger without a focus target.",
+       "Confidence": 80,
+       "Headline": "pointerInteractionInside leaks when pointer is released outside the panel",
+       "Suggestion": "    'document:pointerup': 'onPointerUp()',",
+       "Evidence": [
+        "    '(pointerdown)': 'onPointerDown()',",
+        "    '(pointerup)': 'onPointerUp()',",
+        "    this.pointerInteractionInside = true;",
+        "    this.pointerInteractionInside = false;",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6544,
+      "CachedTokens": 6528,
+      "CompletionTokens": 21556,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-deliberate-scope-guard",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 10,
+       "Severity": "suggestion",
+       "Comment": "`pointerInteractionInside` is only cleared when `pointerup` reaches the host, so any gesture that ends outside the panel leaves it stuck `true`: press a control in the panel and drag off to cancel the click (focus still moves to that control on press, and `pointerup` fires outside the host), or start a touch scroll on panel content (the browser fires `pointercancel` instead of `pointerup`). The next tap on non-focusable content outside the panel then hits the `relatedTarget === null \u0026\u0026 pointerInteractionInside` guard and returns early, so on a narrow screen the panel stays open even though focus left it. Observing `pointerup`/`pointercancel` at the window level resets the flag regardless of where the gesture ends.",
+       "Confidence": 90,
+       "Headline": "Pointer flag can stick true and block closing the panel",
+       "Suggestion": "    '(window:pointerup)': 'onPointerUp()', '(window:pointercancel)': 'onPointerUp()',",
+       "Evidence": [
+        "    '(pointerup)': 'onPointerUp()',",
+        "  onPointerUp(): void {",
+        "    this.pointerInteractionInside = false;",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {",
+        "      return;"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6544,
+      "CachedTokens": 0,
+      "CompletionTokens": 9776,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-deliberate-scope-guard",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 37,
+       "Severity": "suggestion",
+       "Comment": "`pointerInteractionInside` is set on `pointerdown` over the panel but cleared only by a `pointerup` that bubbles to this host. When the gesture ends outside the panel (the user drags a text selection out of the panel and releases the mouse there) or is cancelled (`pointercancel`, e.g. a touch scroll takes over), no `pointerup` reaches the host and the flag stays `true` indefinitely. From then on, on a ≤599px viewport, tapping any non-focusable area outside the panel emits `focusout` with `relatedTarget === null`, the guard returns early, and the panel stays open instead of closing. The flag needs to be cleared when the gesture ends anywhere (e.g. a document-level `pointerup`) and on `pointercancel`, not just on a host `pointerup`.",
+       "Confidence": 85,
+       "Headline": "Stale pointer flag blocks the panel from closing on focus-out",
+       "Suggestion": null,
+       "Evidence": [
+        "  onPointerUp(): void {",
+        "    this.pointerInteractionInside = false;",
+        "  }",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {",
+        "      return;"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6544,
+      "CachedTokens": 6528,
+      "CompletionTokens": 9354,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 1,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0.4,
+     "Full": 1,
+     "Clean": 0.6,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 1.6,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 1,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 1.1,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 1.9,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 1,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 2.6
+    }
+   ]
+  },
+  {
+   "Case": "bait-design-token-offset",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-design-token-offset",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6214,
+      "CachedTokens": 5760,
+      "CompletionTokens": 402,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-design-token-offset",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6214,
+      "CachedTokens": 6144,
+      "CompletionTokens": 510,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-design-token-offset",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6214,
+      "CachedTokens": 6144,
+      "CompletionTokens": 302,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-design-token-offset",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6214,
+      "CachedTokens": 6144,
+      "CompletionTokens": 325,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-design-token-offset",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6214,
+      "CachedTokens": 6144,
+      "CompletionTokens": 651,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-invariant-assertion",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-invariant-assertion",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6113,
+      "CachedTokens": 4096,
+      "CompletionTokens": 1685,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-invariant-assertion",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/people/person-card/person-card.component.ts",
+       "Line": 23,
+       "Severity": "suggestion",
+       "Comment": "`subtitle` non-null-asserts `p.manager` for every non-contractor person, but `Person.manager` is declared optional, so `{ id, displayName, role: 'employee' }` with no manager is a type-valid object. When such a record reaches the card (e.g. a top-level employee whose manager link is missing from the payload), the computed throws `TypeError: Cannot read properties of undefined (reading 'displayName')` and the card fails to render. The interface comment asserts every employee has a manager, but nothing enforces that at runtime, and the previous implementation never touched `manager`.",
+       "Confidence": 85,
+       "Headline": "Non-null assert on optional `manager` crashes for employees without one",
+       "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+       "Evidence": [
+        "  manager?: { id: string; displayName: string };",
+        "    return `Reports to ${p.manager!.displayName}`;"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6113,
+      "CachedTokens": 6016,
+      "CompletionTokens": 2091,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-invariant-assertion",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6113,
+      "CachedTokens": 6016,
+      "CompletionTokens": 3284,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-invariant-assertion",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/people/person-card/person-card.component.ts",
+       "Line": 23,
+       "Severity": "issue",
+       "Comment": "The new employee branch dereferences `p.manager!.displayName`, but `Person.manager` is declared optional (`manager?`), so the compiler does not enforce the invariant the doc comment claims. A type-valid person such as `{ id: 'e1', displayName: 'Ada', role: 'employee' }` — a CEO or any record that omits `manager` — renders fine as a card input and throws `TypeError: Cannot read properties of undefined (reading 'displayName')` inside the computed, breaking the card. The removed line was total and could not throw; the assertion turns a missing optional field into a render-time crash.",
+       "Confidence": 82,
+       "Headline": "Non-null assertion on optional `manager` crashes manager-less employees",
+       "Suggestion": "    return p.manager ? `Reports to ${p.manager.displayName}` : 'Employee';",
+       "Evidence": [
+        "  manager?: { id: string; displayName: string };",
+        "    if (p.role === 'contractor') {",
+        "      return 'Contractor';",
+        "    }",
+        "    return `Reports to ${p.manager!.displayName}`;"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6113,
+      "CachedTokens": 6016,
+      "CompletionTokens": 3356,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-invariant-assertion",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6113,
+      "CachedTokens": 6016,
+      "CompletionTokens": 1246,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0.4,
+     "Full": 1,
+     "Clean": 0.6,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0.1,
+     "Full": 1,
+     "Clean": 0.9,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0.7,
+     "Full": 1,
+     "Clean": 0.3,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0.6,
+     "Full": 1,
+     "Clean": 0.4,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0.9,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 2.6
+    }
+   ]
+  },
+  {
+   "Case": "bait-old-smell-nearby",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-old-smell-nearby",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6182,
+      "CachedTokens": 5760,
+      "CompletionTokens": 526,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-old-smell-nearby",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6182,
+      "CachedTokens": 6144,
+      "CompletionTokens": 673,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-old-smell-nearby",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6182,
+      "CachedTokens": 6144,
+      "CompletionTokens": 536,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-old-smell-nearby",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6182,
+      "CachedTokens": 6144,
+      "CompletionTokens": 422,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-old-smell-nearby",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6182,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1460,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-paid-invoice-payment",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-paid-invoice-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 23,
+       "Severity": "issue",
+       "Comment": "`invoice.getPayments().get(0)` is an unchecked index into the invoice's payment collection. The status guard only proves the invoice is marked PAID, not that a payment row exists: an invoice whose status was set to PAID by a migration, a manual correction, or a legacy import can legitimately have an empty payments list, and the receipt lookup then throws `IndexOutOfBoundsException` and turns a successful payment history lookup into a 500. The check and the dereference need to agree — either the PAID invariant guarantees at least one payment, in which case the code should fail with a domain error instead of a raw list exception, or the empty case must be handled explicitly.",
+       "Confidence": 85,
+       "Headline": "Receipt lookup crashes on a PAID invoice with no recorded payments",
+       "Suggestion": "        Payment payment = invoice.getPayments().stream()\n                .max(Comparator.comparing(Payment::getPaidAt))\n                .orElseThrow(() -\u003e new InvoiceNotPaidException(invoiceId));",
+       "Evidence": [
+        "        if (invoice.getStatus() != InvoiceStatus.PAID) {",
+        "            throw new InvoiceNotPaidException(invoiceId);",
+        "        }",
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6144,
+      "CachedTokens": 4096,
+      "CompletionTokens": 1692,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-paid-invoice-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 23,
+       "Severity": "issue",
+       "Comment": "The receipt path now dereferences `invoice.getPayments().get(0)` with no check that the list is non-empty. `receiptFor` only verifies `getStatus() == PAID` before this call, so any PAID invoice whose payment list is empty — e.g. one marked paid by a credit note, a write-off, or an external status update that recorded no `Payment` — throws `IndexOutOfBoundsException` instead of producing a receipt. The same assumption breaks for invoices with several payments: `get(0)` yields whatever the list's order puts first, so a part-payment invoice can get the earliest partial payment's date and method rather than the one that settled it.",
+       "Confidence": 80,
+       "Headline": "Receipt service indexes payments without checking the list",
+       "Suggestion": null,
+       "Evidence": [
+        "Payment payment = invoice.getPayments().get(0);",
+        "return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "        DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6144,
+      "CachedTokens": 4096,
+      "CompletionTokens": 2598,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-paid-invoice-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 23,
+       "Severity": "suggestion",
+       "Comment": "`receiptFor` now builds the receipt from `invoice.getPayments().get(0)`, which assumes every invoice that reaches this point has at least one `Payment`. If a `PAID` invoice is loaded with an empty `payments` collection (for example, status advanced by external reconciliation before the payment record is persisted, or a payment removed after a refund), `receiptFor` throws `IndexOutOfBoundsException` and the call fails with a 500; `payment.getPaidAt()` being null likewise makes `DATE.format` throw. The removed line read `invoice.getUpdatedAt()`, which had no dependency on collection contents, so this crash path is new.",
+       "Confidence": 80,
+       "Headline": "Unguarded get(0) on payments crashes when a PAID invoice has none",
+       "Suggestion": "        Payment payment = invoice.getPayments().stream().findFirst().orElseThrow(() -\u003e new InvoiceNotPaidException(invoiceId));",
+       "Evidence": [
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6144,
+      "CachedTokens": 4096,
+      "CompletionTokens": 4321,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-paid-invoice-payment",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6144,
+      "CachedTokens": 4096,
+      "CompletionTokens": 2231,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-paid-invoice-payment",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6144,
+      "CachedTokens": 4096,
+      "CompletionTokens": 826,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0.6,
+     "Full": 1,
+     "Clean": 0.4,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0.9,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0.7,
+     "Full": 1,
+     "Clean": 0.3,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0.9,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 1,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0.7,
+     "Full": 1,
+     "Clean": 0.3,
+     "Calls": 2.6
+    }
+   ]
+  },
+  {
+   "Case": "bait-shortcut-field-guard",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-shortcut-field-guard",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6192,
+      "CachedTokens": 5760,
+      "CompletionTokens": 975,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-shortcut-field-guard",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6192,
+      "CachedTokens": 6144,
+      "CompletionTokens": 5335,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-shortcut-field-guard",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6192,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1784,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-shortcut-field-guard",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6192,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1391,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-shortcut-field-guard",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6192,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1597,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-state-excluded-by-domain",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-state-excluded-by-domain",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6906,
+      "CachedTokens": 5760,
+      "CompletionTokens": 1209,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-state-excluded-by-domain",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6906,
+      "CachedTokens": 6784,
+      "CompletionTokens": 936,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-state-excluded-by-domain",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6906,
+      "CachedTokens": 6784,
+      "CompletionTokens": 1442,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-state-excluded-by-domain",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6906,
+      "CachedTokens": 0,
+      "CompletionTokens": 719,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-state-excluded-by-domain",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6906,
+      "CachedTokens": 6784,
+      "CompletionTokens": 1449,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-style-and-tests",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-style-and-tests",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6111,
+      "CachedTokens": 5760,
+      "CompletionTokens": 423,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-style-and-tests",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6111,
+      "CachedTokens": 6016,
+      "CompletionTokens": 475,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-style-and-tests",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6111,
+      "CachedTokens": 6016,
+      "CompletionTokens": 521,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-style-and-tests",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6111,
+      "CachedTokens": 6016,
+      "CompletionTokens": 734,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-style-and-tests",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6111,
+      "CachedTokens": 6016,
+      "CompletionTokens": 500,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "bait-tuned-poll-interval",
+   "Seeded": 0,
+   "Samples": [
+    {
+     "Case": "bait-tuned-poll-interval",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6246,
+      "CachedTokens": 5760,
+      "CompletionTokens": 620,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-tuned-poll-interval",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6246,
+      "CachedTokens": 6144,
+      "CompletionTokens": 724,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-tuned-poll-interval",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6246,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1002,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-tuned-poll-interval",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6246,
+      "CachedTokens": 6144,
+      "CompletionTokens": 606,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "bait-tuned-poll-interval",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6246,
+      "CachedTokens": 6144,
+      "CompletionTokens": 432,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "edge-early-return-skips-check",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "edge-early-return-skips-check",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "notice-skips-end-date",
+        "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+        "lines": [
+         27,
+         39
+        ],
+        "keywords": [
+         "end date",
+         "open period",
+         "open leave",
+         "validUntil",
+         "skip",
+         "bypass",
+         "never reach"
+        ],
+        "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on src/app/claims/claim-detail/claim-detail.component.ts"
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6988,
+      "CachedTokens": 5760,
+      "CompletionTokens": 4129,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-early-return-skips-check",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/claims/claim-detail/claim-detail.component.ts",
+       "Line": 27,
+       "Severity": "issue",
+       "Comment": "The `returnNotices?.length` guard returns before the open-period handling, so the state the `LeaveResponse` doc comment added in this PR describes — \"A notice can be reported ahead of time, while a leave period is still open; that period then still needs its end date\" — never gets that end date. Concretely: `getLeave` returns `{leavePeriods: [{id:'p1', validFrom:'2024-01-01'}], returnNotices: [{id:'n1', reportedAt:'2024-02-01'}]}` and the user clicks \"Report full return to work\"; the handler opens `openExistingReturnNotice` and returns, so `openEndDate` for `p1` is unreachable and `validUntil` is never supplied, while the user is routed to `return-notice/new` — a second return notice — instead of closing the open period. The end-date step needs to run for open periods even when a notice already exists (or the existing-notice branch must collect it).",
+       "Confidence": 85,
+       "Headline": "Existing return notice short-circuits the open-period end-date step",
+       "Suggestion": null,
+       "Evidence": [
+        "    if (returnNotices?.length) {",
+        "        .openExistingReturnNotice(this.elementRef, claimNumber, returnNotices[0].id)",
+        "      return;",
+        "    const open = leavePeriods.filter((p) =\u003e !p.validUntil);",
+        "    if (open.length) {"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "notice-skips-end-date",
+        "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+        "lines": [
+         27,
+         39
+        ],
+        "keywords": [
+         "end date",
+         "open period",
+         "open leave",
+         "validUntil",
+         "skip",
+         "bypass",
+         "never reach"
+        ],
+        "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6988,
+      "CachedTokens": 6912,
+      "CompletionTokens": 9862,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-early-return-skips-check",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/claims/claim-detail/claim-detail.component.ts",
+       "Line": 27,
+       "Severity": "suggestion",
+       "Comment": "The `LeaveResponse.returnNotices` doc in `src/app/claims/api/leave-api.service.ts` states that a return notice may be reported ahead of time while a leave period is still open, and that \"that period then still needs its end date\". This branch returns as soon as any `returnNotices` entry exists, before the `open` leave-period check below, so on that exact scenario (`returnNotices` non-empty plus a period with no `validUntil`) the end-date modal (`openEndDate`) is never opened from this handler and the documented requirement is not met. Either the ordering contradicts the documented contract, or the doc comment overstates what this flow guarantees.",
+       "Confidence": 80,
+       "Headline": "Existing return notice short-circuits the open leave period end-date flow",
+       "Suggestion": null,
+       "Evidence": [
+        "if (returnNotices?.length) {",
+        "  this.leaveModal",
+        "    .openExistingReturnNotice(this.elementRef, claimNumber, returnNotices[0].id)",
+        "    .subscribe(() =\u003e void this.router.navigate(['return-notice', 'new', claimNumber]));",
+        "  return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "notice-skips-end-date",
+        "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+        "lines": [
+         27,
+         39
+        ],
+        "keywords": [
+         "end date",
+         "open period",
+         "open leave",
+         "validUntil",
+         "skip",
+         "bypass",
+         "never reach"
+        ],
+        "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6988,
+      "CachedTokens": 6912,
+      "CompletionTokens": 1604,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-early-return-skips-check",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "notice-skips-end-date",
+        "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+        "lines": [
+         27,
+         39
+        ],
+        "keywords": [
+         "end date",
+         "open period",
+         "open leave",
+         "validUntil",
+         "skip",
+         "bypass",
+         "never reach"
+        ],
+        "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on src/app/claims/claim-detail/claim-detail.component.ts"
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6988,
+      "CachedTokens": 6912,
+      "CompletionTokens": 4336,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-early-return-skips-check",
+     "Outcome": "ok",
+     "Findings": null,
+     "Matches": [
+      {
+       "Expected": {
+        "id": "notice-skips-end-date",
+        "file": "src/app/claims/claim-detail/claim-detail.component.ts",
+        "lines": [
+         27,
+         39
+        ],
+        "keywords": [
+         "end date",
+         "open period",
+         "open leave",
+         "validUntil",
+         "skip",
+         "bypass",
+         "never reach"
+        ],
+        "why": "A notice reported ahead of time coexists with an open period (the type's doc says so); the early return opens the notice and never reaches the end-date dialog the period still needs."
+       },
+       "Found": false,
+       "Finding": -1,
+       "Why": "no finding on src/app/claims/claim-detail/claim-detail.component.ts"
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6988,
+      "CachedTokens": 6912,
+      "CompletionTokens": 1437,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 0.4,
+     "Extra": 0,
+     "Full": 0.4,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 0.1,
+     "Extra": 0,
+     "Full": 0.1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 0.7,
+     "Extra": 0,
+     "Full": 0.7,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 0.3,
+     "Extra": 0,
+     "Full": 0.3,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 0.6,
+     "Extra": 0,
+     "Full": 0.6,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 0.9,
+     "Extra": 0,
+     "Full": 0.9,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 0.3,
+     "Extra": 0,
+     "Full": 0.3,
+     "Clean": 1,
+     "Calls": 2.6
+    }
+   ]
+  },
+  {
+   "Case": "edge-failure-reported-as-success",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "edge-failure-reported-as-success",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/bookings/booking-detail/booking-detail.component.ts",
+       "Line": 26,
+       "Severity": "issue",
+       "Comment": "The success toast runs unconditionally, including after the withdrawal call has failed. When `withdrawChangeRequest` rejects (network error, 4xx/5xx, expired session), the `catch` swallows the error and the method still tells the user `bookings.changeRequest.withdrawn` succeeded, then reloads a booking that is still in its previous state. The user is told the change request is gone when it is not, and has no signal to retry. The comment justifies continuing to the reload after a failure — it does not justify a success message. Report the success toast only when the call actually resolves (e.g. move it into the `try`, or return early from the `catch` after the reload).",
+       "Confidence": 92,
+       "Headline": "Success toast shown even when the withdrawal API call fails",
+       "Suggestion": null,
+       "Evidence": [
+        "      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));",
+        "    } catch {",
+        "      // The reload below shows whatever state the booking is in.",
+        "    }",
+        "    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "failure-toasted-as-success",
+        "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+        "lines": [
+         20,
+         26
+        ],
+        "keywords": [
+         "success",
+         "swallow",
+         "even when",
+         "even if",
+         "regardless",
+         "fail",
+         "error is ignored",
+         "ignored"
+        ],
+        "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6277,
+      "CachedTokens": 0,
+      "CompletionTokens": 4443,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-failure-reported-as-success",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/bookings/booking-detail/booking-detail.component.ts",
+       "Line": 26,
+       "Severity": "issue",
+       "Comment": "`withdrawChangeRequest` swallows any rejection from `this.api.withdrawChangeRequest(...)` in the empty `catch`, then falls through to `this.toast.success(...)` unconditionally. If the API call fails — network error, 403, 500 — the user is told \"Change request withdrawn\" even though nothing was withdrawn, and `reload()` only re-fetches state the UI already had. The comment's premise that the reload shows \"whatever state the booking is in\" does not cover the toast, which asserts a specific outcome. Success should only be reported when the awaited call actually resolved.",
+       "Confidence": 95,
+       "Headline": "Success toast shown even when withdrawal fails",
+       "Suggestion": "    try {\n      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n      this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n    } catch {\n      // The reload below shows whatever state the booking is in.\n    }\n    await this.reload();",
+       "Evidence": [
+        "    } catch {",
+        "      // The reload below shows whatever state the booking is in.",
+        "    }",
+        "    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));",
+        "    await this.reload();"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "failure-toasted-as-success",
+        "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+        "lines": [
+         20,
+         26
+        ],
+        "keywords": [
+         "success",
+         "swallow",
+         "even when",
+         "even if",
+         "regardless",
+         "fail",
+         "error is ignored",
+         "ignored"
+        ],
+        "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6277,
+      "CachedTokens": 6272,
+      "CompletionTokens": 1232,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-failure-reported-as-success",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/bookings/booking-detail/booking-detail.component.ts",
+       "Line": 26,
+       "Severity": "issue",
+       "Comment": "`withdrawChangeRequest` catches any failure from `this.api.withdrawChangeRequest(...)`, but `this.toast.success(...)` runs unconditionally afterwards. When the API call fails (network error, 4xx/5xx), the user is shown the success toast 'bookings.changeRequest.withdrawn' even though nothing was withdrawn, then `reload()` silently shows the old state — so the UI tells the user the action succeeded while the data says otherwise. The catch comment claims the reload reflects the real state, but the success toast contradicts that.",
+       "Confidence": 90,
+       "Headline": "Success toast fires even when withdrawChangeRequest fails",
+       "Suggestion": "      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n      this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n    } catch {\n      // The reload below shows whatever state the booking is in.\n    }",
+       "Evidence": [
+        "    } catch {",
+        "      // The reload below shows whatever state the booking is in.",
+        "    }",
+        "    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));",
+        "    await this.reload();"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "failure-toasted-as-success",
+        "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+        "lines": [
+         20,
+         26
+        ],
+        "keywords": [
+         "success",
+         "swallow",
+         "even when",
+         "even if",
+         "regardless",
+         "fail",
+         "error is ignored",
+         "ignored"
+        ],
+        "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6277,
+      "CachedTokens": 6272,
+      "CompletionTokens": 1244,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-failure-reported-as-success",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/bookings/booking-detail/booking-detail.component.ts",
+       "Line": 26,
+       "Severity": "issue",
+       "Comment": "The `catch` block swallows the failure, but the success toast on the next line runs unconditionally. When `withdrawChangeRequest` rejects (e.g. the request fails or the change request is already withdrawn), the user still sees the \"withdrawn\" success toast while the reload shows an unwithdrawn booking — the UI reports success for a failed operation. The toast must only fire when the API call succeeds.",
+       "Confidence": 92,
+       "Headline": "Success toast shown even when the withdrawal fails",
+       "Suggestion": "  protected async withdrawChangeRequest(): Promise\u003cvoid\u003e {\n    try {\n      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n      this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n    } catch {\n      // The reload below shows whatever state the booking is in.\n    }\n    await this.reload();\n  }",
+       "Evidence": [
+        "      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));",
+        "    } catch {",
+        "      // The reload below shows whatever state the booking is in.",
+        "    }",
+        "    this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "failure-toasted-as-success",
+        "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+        "lines": [
+         20,
+         26
+        ],
+        "keywords": [
+         "success",
+         "swallow",
+         "even when",
+         "even if",
+         "regardless",
+         "fail",
+         "error is ignored",
+         "ignored"
+        ],
+        "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6277,
+      "CachedTokens": 6272,
+      "CompletionTokens": 1068,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-failure-reported-as-success",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/bookings/booking-detail/booking-detail.component.ts",
+       "Line": 26,
+       "Severity": "issue",
+       "Comment": "`withdrawChangeRequest` swallows any API failure in the empty `catch`, but the success toast on the next line runs unconditionally. When `withdrawChangeRequest(...)` rejects — e.g. the booking is no longer eligible or the request fails with a 409/500 — the user is told the change request was withdrawn even though nothing happened, and the subsequent reload can silently show the request still open. The success toast must only fire when the call actually succeeded; report the failure otherwise.",
+       "Confidence": 92,
+       "Headline": "Success toast shown even when withdrawal request fails",
+       "Suggestion": "    try {\n      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));\n      this.toast.success(this.translate.instant('bookings.changeRequest.withdrawn'));\n    } catch {\n      // The reload below shows whatever state the booking is in.\n    }\n    await this.reload();",
+       "Evidence": [
+        "    try {",
+        "      await firstValueFrom(this.api.withdrawChangeRequest(this.bookingNumber(), this.changeRequestId()));",
+        "    } catch {",
+        "      // The reload below shows whatever state the booking is in.",
+        "    }"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "failure-toasted-as-success",
+        "file": "src/app/bookings/booking-detail/booking-detail.component.ts",
+        "lines": [
+         20,
+         26
+        ],
+        "keywords": [
+         "success",
+         "swallow",
+         "even when",
+         "even if",
+         "regardless",
+         "fail",
+         "error is ignored",
+         "ignored"
+        ],
+        "why": "The catch discards the error and the success toast follows unconditionally, so a failed withdrawal is reported as done."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6277,
+      "CachedTokens": 6272,
+      "CompletionTokens": 1081,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  },
+  {
+   "Case": "edge-guard-inverted",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "edge-guard-inverted",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 30,
+       "Severity": "suggestion",
+       "Comment": "The comment states that \"only narrow screens close the panel when focus leaves it\", but the guard on the next line does the opposite: `globalThis.matchMedia('(max-width: 599px)').matches` is true on narrow screens and the early `return` means the panel is never closed by `onFocusOut` there — only on viewports wider than 599px does `this.isOpen.set(false)` run. Whichever side reflects the intent, one of the two is wrong: if the comment is the intent, focus loss never closes the panel on any narrow (touch) viewport; if the code is the intent, the comment misleads anyone touching this handler. Align the two.",
+       "Confidence": 92,
+       "Headline": "Narrow-screen comment contradicts the media-query guard in onFocusOut",
+       "Suggestion": "  // Only wide screens close the panel when focus leaves it.",
+       "Evidence": [
+        "  // Only narrow screens close the panel when focus leaves it.",
+        "  onFocusOut(event: FocusEvent): void {",
+        "    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      },
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 10,
+       "Severity": "suggestion",
+       "Comment": "`onPointerDown`/`onPointerUp` are bound to the panel host, so `pointerInteractionInside` is only cleared when the pointer is released inside the panel. With a mouse or pen, pressing inside the panel and releasing outside (e.g. dragging a text selection past the panel edge) never fires the host `pointerup`, leaving the flag stuck at `true`. The next click on a non-focusable area outside the panel then fires `focusout` with `relatedTarget === null`, the guard returns early, and the panel stays open even though focus has left it. (Touch input is implicitly captured to the `pointerdown` target, so this affects mouse/pen drags.) Scoping the reset to `document:pointerup` clears the flag regardless of where the pointer is released.",
+       "Confidence": 88,
+       "Headline": "pointerInteractionInside can stay set after a drag-release outside the panel",
+       "Suggestion": "    '(document:pointerup)': 'onPointerUp()',",
+       "Evidence": [
+        "    '(pointerup)': 'onPointerUp()',",
+        "  onPointerDown(): void {",
+        "    this.pointerInteractionInside = true;",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "focus-guard-inverted",
+        "file": "src/app/shared/side-panel/side-panel.component.ts",
+        "lines": [
+         30,
+         32
+        ],
+        "keywords": [
+         "inverted",
+         "negation",
+         "opposite",
+         "wide",
+         "desktop",
+         "narrow",
+         "mobile",
+         "reversed"
+        ],
+        "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6542,
+      "CachedTokens": 5760,
+      "CompletionTokens": 10419,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-guard-inverted",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 32,
+       "Severity": "suggestion",
+       "Comment": "The comment says only narrow screens close the panel when focus leaves it, but the guard returns early when `(max-width: 599px)` matches, so narrow viewports never close on focus-out while wide ones do — comment and condition say opposite things. The \"Tapping …\" note below refers to touch interaction, which points at the narrow case being the intended one, in which case the media query check is inverted and auto-close happens only on the viewports it should not. One of the two has to change: either the comment must describe wide screens, or the guard must skip wide ones.",
+       "Confidence": 92,
+       "Headline": "Focus-out comment contradicts the viewport guard beside it",
+       "Suggestion": null,
+       "Evidence": [
+        "  // Only narrow screens close the panel when focus leaves it.",
+        "    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      },
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 37,
+       "Severity": "suggestion",
+       "Comment": "`pointerInteractionInside` is only cleared by `pointerup` on the host, so it goes stale whenever the press starts inside the panel and ends outside it. Realistic sequence on a wide viewport: press on a focusable control in the panel, drag out past its edge and release (text-selection drags do this) — `pointerup` lands outside the host and the flag stays `true`; the next click on non-focusable page background then produces a `focusout` with `relatedTarget === null`, the guard returns early, and the panel stays open where it should close. A `pointercancel` (e.g. a touch scroll that the browser takes over) leaves the flag stuck the same way. The flag needs to be cleared whenever the pointer interaction ends outside the panel.",
+       "Confidence": 85,
+       "Headline": "pointerInteractionInside stays true when pointerup fires outside panel",
+       "Suggestion": null,
+       "Evidence": [
+        "  onPointerUp(): void {",
+        "    this.pointerInteractionInside = false;",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "focus-guard-inverted",
+        "file": "src/app/shared/side-panel/side-panel.component.ts",
+        "lines": [
+         30,
+         32
+        ],
+        "keywords": [
+         "inverted",
+         "negation",
+         "opposite",
+         "wide",
+         "desktop",
+         "narrow",
+         "mobile",
+         "reversed"
+        ],
+        "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6542,
+      "CachedTokens": 6528,
+      "CompletionTokens": 14887,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-guard-inverted",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 30,
+       "Severity": "suggestion",
+       "Comment": "The new comment states that only narrow screens close the panel when focus leaves it, but the guard on the next lines returns early when `globalThis.matchMedia('(max-width: 599px)').matches`, i.e. narrow screens never close and only wide screens do. One of the two is wrong: if narrow screens are meant to auto-close, the guard is inverted and on mobile the panel stays open after focus leaves; if the code is the intended behavior (touch taps on small screens blur with a null `relatedTarget` too often to rely on focus-out), the comment misdocuments it. Reconcile the comment and the media query so they describe the same screens.",
+       "Confidence": 95,
+       "Headline": "Comment and media query disagree on which screens auto-close",
+       "Suggestion": null,
+       "Evidence": [
+        "  // Only narrow screens close the panel when focus leaves it.",
+        "  onFocusOut(event: FocusEvent): void {",
+        "    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "focus-guard-inverted",
+        "file": "src/app/shared/side-panel/side-panel.component.ts",
+        "lines": [
+         30,
+         32
+        ],
+        "keywords": [
+         "inverted",
+         "negation",
+         "opposite",
+         "wide",
+         "desktop",
+         "narrow",
+         "mobile",
+         "reversed"
+        ],
+        "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6542,
+      "CachedTokens": 6528,
+      "CompletionTokens": 11084,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-guard-inverted",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 30,
+       "Severity": "suggestion",
+       "Comment": "The comment states that only narrow screens close the panel when focus leaves it, but `onFocusOut` does the opposite: `matchMedia('(max-width: 599px)').matches` returns early, so narrow screens never close on focus-out and only wide screens do. The scenario: a maintainer trusts the comment, changes the 599px breakpoint or the surrounding logic, and flips the behaviour that users actually get. Either the comment or the condition is wrong; as written they cannot both be true.",
+       "Confidence": 95,
+       "Headline": "Comment contradicts the breakpoint guard in onFocusOut",
+       "Suggestion": "  // Only wide screens close the panel when focus leaves it.",
+       "Evidence": [
+        "  // Only narrow screens close the panel when focus leaves it.",
+        "  onFocusOut(event: FocusEvent): void {",
+        "    if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      },
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 37,
+       "Severity": "suggestion",
+       "Comment": "`pointerInteractionInside` is only reset by a `pointerup` on the host element, but a mouse press inside the panel that is released outside it never fires `pointerup` on the host (touch is saved by implicit pointer capture, mouse is not). After such a press-drag-release, the flag stays `true`, so the later case the guard exists for — a `focusout` with `relatedTarget === null` from clicking non-focusable content anywhere, including outside the panel — keeps the panel open even though the user's interaction ended outside. Tracking the pointer's end (and `pointercancel`) beyond the host element would clear the flag reliably.",
+       "Confidence": 80,
+       "Headline": "Pointer flag can stay stuck true when release happens outside",
+       "Suggestion": null,
+       "Evidence": [
+        "  onPointerUp(): void {",
+        "    this.pointerInteractionInside = false;",
+        "  }",
+        "    if (event.relatedTarget === null \u0026\u0026 this.pointerInteractionInside) {"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "focus-guard-inverted",
+        "file": "src/app/shared/side-panel/side-panel.component.ts",
+        "lines": [
+         30,
+         32
+        ],
+        "keywords": [
+         "inverted",
+         "negation",
+         "opposite",
+         "wide",
+         "desktop",
+         "narrow",
+         "mobile",
+         "reversed"
+        ],
+        "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 1,
+     "Cost": {
+      "PromptTokens": 6542,
+      "CachedTokens": 6528,
+      "CompletionTokens": 4230,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-guard-inverted",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/app/shared/side-panel/side-panel.component.ts",
+       "Line": 32,
+       "Severity": "issue",
+       "Comment": "The comment states that only narrow screens close the panel when focus leaves it, but `if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;` bails out precisely when the viewport is 599px or narrower, so the auto-close runs only on wider screens. On a phone-sized viewport the panel therefore never closes on focus loss (e.g. tapping a link or button outside the panel), which is the opposite of the documented intent and looks like an inverted media-query check.",
+       "Confidence": 85,
+       "Headline": "Focus-out close runs on wide screens, not narrow ones as documented",
+       "Suggestion": "    if (!this.isOpen() || !globalThis.matchMedia('(max-width: 599px)').matches) return;",
+       "Evidence": [
+        "// Only narrow screens close the panel when focus leaves it.",
+        "onFocusOut(event: FocusEvent): void {",
+        "  if (!this.isOpen() || globalThis.matchMedia('(max-width: 599px)').matches) return;"
+       ],
+       "BlockingRule": null,
+       "Category": "contradiction"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "focus-guard-inverted",
+        "file": "src/app/shared/side-panel/side-panel.component.ts",
+        "lines": [
+         30,
+         32
+        ],
+        "keywords": [
+         "inverted",
+         "negation",
+         "opposite",
+         "wide",
+         "desktop",
+         "narrow",
+         "mobile",
+         "reversed"
+        ],
+        "why": "Without the negation the guard returns when the narrow-screen query matches, so the panel closes on wide screens and never on narrow ones, against the comment."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6542,
+      "CachedTokens": 6528,
+      "CompletionTokens": 1971,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0.6,
+     "Full": 1,
+     "Clean": 0.4,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0.1,
+     "Full": 1,
+     "Clean": 0.9,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 1.1,
+     "Full": 1,
+     "Clean": 0.1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 1.5,
+     "Full": 1,
+     "Clean": 0,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0.3,
+     "Full": 1,
+     "Clean": 0.7,
+     "Calls": 2.8
+    }
+   ]
+  },
+  {
+   "Case": "edge-paid-without-payment",
+   "Seeded": 1,
+   "Samples": [
+    {
+     "Case": "edge-paid-without-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 34,
+       "Severity": "issue",
+       "Comment": "`receiptFor` now unconditionally reads `invoice.getPayments().get(0)`, but `markPaidExternally` in the same class sets the status to `PAID` with no `Payment` recorded (its javadoc states exactly that). Calling `receiptFor` on such an invoice passes the `PAID` check and then hits `get(0)` on an empty payments list, throwing `IndexOutOfBoundsException` (or `NullPointerException` if `getPayments()` is null) instead of producing a receipt. The previous implementation used `invoice.getUpdatedAt()` and worked for externally paid invoices.",
+       "Confidence": 90,
+       "Headline": "receiptFor crashes for invoices marked paid externally",
+       "Suggestion": null,
+       "Evidence": [
+        " * by hand). No Payment is recorded for it.",
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "receipt-empty-payments",
+        "file": "src/main/java/com/example/billing/ReceiptService.java",
+        "lines": [
+         34,
+         36
+        ],
+        "keywords": [
+         "IndexOutOfBounds",
+         "out of bounds",
+         "empty",
+         "no payment",
+         "markPaidExternally",
+         "externally"
+        ],
+        "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6229,
+      "CachedTokens": 4096,
+      "CompletionTokens": 991,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-paid-without-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 34,
+       "Severity": "issue",
+       "Comment": "`receiptFor` now requires a `Payment` to exist, but `markPaidExternally` (same class, lines 22–27) sets an invoice to `InvoiceStatus.PAID` while explicitly recording no `Payment`. Calling `receiptFor` for such an invoice passes the `PAID` check on line 31 and then `invoice.getPayments().get(0)` throws `IndexOutOfBoundsException` on the empty payments list. The previous code formatted `invoice.getUpdatedAt()`, so this crash path is new with this change.",
+       "Confidence": 95,
+       "Headline": "receiptFor crashes on invoices paid externally with no Payment",
+       "Suggestion": null,
+       "Evidence": [
+        "     * by hand). No Payment is recorded for it.",
+        "        invoice.setStatus(InvoiceStatus.PAID);",
+        "        if (invoice.getStatus() != InvoiceStatus.PAID) {",
+        "            throw new InvoiceNotPaidException(invoiceId);",
+        "        Payment payment = invoice.getPayments().get(0);"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "receipt-empty-payments",
+        "file": "src/main/java/com/example/billing/ReceiptService.java",
+        "lines": [
+         34,
+         36
+        ],
+        "keywords": [
+         "IndexOutOfBounds",
+         "out of bounds",
+         "empty",
+         "no payment",
+         "markPaidExternally",
+         "externally"
+        ],
+        "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6229,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1785,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-paid-without-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 34,
+       "Severity": "issue",
+       "Comment": "`receiptFor` now builds the receipt from `invoice.getPayments().get(0)`, but `markPaidExternally` (same class) marks an invoice `PAID` while deliberately recording no `Payment`, as its javadoc states. Calling `receiptFor` after `markPaidExternally` for such an invoice reaches `get(0)` on an empty payments list and throws `IndexOutOfBoundsException` instead of producing a receipt. The old code used `invoice.getUpdatedAt()`, which existed for every invoice, so this failure path is introduced by this change. The same lookup is also fragile for invoices with several payments (refund/retry), where `get(0)` is not necessarily the payment the receipt should describe.",
+       "Confidence": 95,
+       "Headline": "Receipt built from payments[0] crashes for externally paid invoices",
+       "Suggestion": null,
+       "Evidence": [
+        "     * by hand). No Payment is recorded for it.",
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "receipt-empty-payments",
+        "file": "src/main/java/com/example/billing/ReceiptService.java",
+        "lines": [
+         34,
+         36
+        ],
+        "keywords": [
+         "IndexOutOfBounds",
+         "out of bounds",
+         "empty",
+         "no payment",
+         "markPaidExternally",
+         "externally"
+        ],
+        "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6229,
+      "CachedTokens": 6144,
+      "CompletionTokens": 985,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-paid-without-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 34,
+       "Severity": "issue",
+       "Comment": "`receiptFor` now unconditionally reads `invoice.getPayments().get(0)`, but `markPaidExternally` (same class) sets an invoice to `PAID` while explicitly recording no `Payment` — its javadoc says \"No Payment is recorded for it.\" Calling `receiptFor` for an externally reconciled invoice therefore reaches `get(0)` on an empty payments list and throws `IndexOutOfBoundsException`, where the previous code formatted `invoice.getUpdatedAt()` and worked. A bank-transfer invoice marked paid by hand is a realistic input on this path.",
+       "Confidence": 95,
+       "Headline": "receiptFor crashes on externally paid invoices with no Payment",
+       "Suggestion": null,
+       "Evidence": [
+        "     * by hand). No Payment is recorded for it.",
+        "        invoice.setStatus(InvoiceStatus.PAID);",
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "receipt-empty-payments",
+        "file": "src/main/java/com/example/billing/ReceiptService.java",
+        "lines": [
+         34,
+         36
+        ],
+        "keywords": [
+         "IndexOutOfBounds",
+         "out of bounds",
+         "empty",
+         "no payment",
+         "markPaidExternally",
+         "externally"
+        ],
+        "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6229,
+      "CachedTokens": 6144,
+      "CompletionTokens": 936,
+      "NanoUSD": null
+     }
+    },
+    {
+     "Case": "edge-paid-without-payment",
+     "Outcome": "ok",
+     "Findings": [
+      {
+       "File": "src/main/java/com/example/billing/ReceiptService.java",
+       "Line": 34,
+       "Severity": "issue",
+       "Comment": "`receiptFor` now unconditionally reads `invoice.getPayments().get(0)`, but this class explicitly supports invoices paid outside the platform: `markPaidExternally` sets the status to `InvoiceStatus.PAID` while its javadoc states \"No Payment is recorded for it.\" Calling `receiptFor` after `markPaidExternally` on the same invoice passes the status check and then throws `IndexOutOfBoundsException` (or `NullPointerException` if `getPayments()` is empty-null), where the removed code happily built the receipt from `invoice.getUpdatedAt()`. Any externally paid invoice now produces a crash instead of a receipt.",
+       "Confidence": 92,
+       "Headline": "receiptFor crashes for invoices marked paid externally",
+       "Suggestion": null,
+       "Evidence": [
+        "     * by hand). No Payment is recorded for it.",
+        "        invoice.setStatus(InvoiceStatus.PAID);",
+        "        Payment payment = invoice.getPayments().get(0);",
+        "        return new Receipt(invoice.getNumber(), invoice.getTotal(),",
+        "                DATE.format(payment.getPaidAt()), payment.getMethod());"
+       ],
+       "BlockingRule": null,
+       "Category": "bug"
+      }
+     ],
+     "Matches": [
+      {
+       "Expected": {
+        "id": "receipt-empty-payments",
+        "file": "src/main/java/com/example/billing/ReceiptService.java",
+        "lines": [
+         34,
+         36
+        ],
+        "keywords": [
+         "IndexOutOfBounds",
+         "out of bounds",
+         "empty",
+         "no payment",
+         "markPaidExternally",
+         "externally"
+        ],
+        "why": "markPaidExternally sets PAID without a Payment, so receiptFor on such an invoice calls get(0) on an empty list."
+       },
+       "Found": true,
+       "Finding": 0,
+       "Why": ""
+      }
+     ],
+     "Extra": 0,
+     "Cost": {
+      "PromptTokens": 6229,
+      "CachedTokens": 6144,
+      "CompletionTokens": 1734,
+      "NanoUSD": null
+     }
+    }
+   ],
+   "Views": [
+    {
+     "Name": "single",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 1
+    },
+    {
+     "Name": "agree2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "either2",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    },
+    {
+     "Name": "vote3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "tiered3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "union3",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 3
+    },
+    {
+     "Name": "adaptive",
+     "Caught": 1,
+     "Extra": 0,
+     "Full": 1,
+     "Clean": 1,
+     "Calls": 2
+    }
+   ]
+  }
+ ],
+ "Views": [
+  {
+   "Name": "single",
+   "Calls": 1.0000000000000002,
+   "Caught": 3.4,
+   "Extra": 2.6,
+   "AllCaught": 0.4,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  },
+  {
+   "Name": "agree2",
+   "Calls": 2.0000000000000004,
+   "Caught": 3.1,
+   "Extra": 0.9,
+   "AllCaught": 0.1,
+   "ControlsClean": 0.378,
+   "CostMultiple": null
+  },
+  {
+   "Name": "either2",
+   "Calls": 2.0000000000000004,
+   "Caught": 3.7,
+   "Extra": 4.3,
+   "AllCaught": 0.7,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  },
+  {
+   "Name": "vote3",
+   "Calls": 2.999999999999999,
+   "Caught": 3.3,
+   "Extra": 2.3,
+   "AllCaught": 0.3,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  },
+  {
+   "Name": "tiered3",
+   "Calls": 2.999999999999999,
+   "Caught": 3.6,
+   "Extra": 2.9,
+   "AllCaught": 0.6,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  },
+  {
+   "Name": "union3",
+   "Calls": 2.999999999999999,
+   "Caught": 3.9,
+   "Extra": 5.3,
+   "AllCaught": 0.9,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  },
+  {
+   "Name": "adaptive",
+   "Calls": 2.177777777777778,
+   "Caught": 3.3,
+   "Extra": 2.3,
+   "AllCaught": 0.3,
+   "ControlsClean": 0,
+   "CostMultiple": null
+  }
+ ],
+ "Agreement": [
+  {
+   "Votes": 1,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 1,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 2,
+   "Real": 1,
+   "RealIssue": 1,
+   "Invented": 3,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 3,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 2,
+   "InventedIssue": 1
+  },
+  {
+   "Votes": 4,
+   "Real": 0,
+   "RealIssue": 0,
+   "Invented": 0,
+   "InventedIssue": 0
+  },
+  {
+   "Votes": 5,
+   "Real": 3,
+   "RealIssue": 2,
+   "Invented": 0,
+   "InventedIssue": 0
+  }
+ ],
+ "Controls": [
+  {
+   "Case": "bait-breakpoint-sync",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-cache-get-only",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-concurrent-cancel-handler",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-concurrent-mark-read",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-concurrent-withdraw-dialog",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-deliberate-scope-guard",
+   "Findings": 1,
+   "Issues": 0.2,
+   "Clean": 0
+  },
+  {
+   "Case": "bait-design-token-offset",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-invariant-assertion",
+   "Findings": 0.4,
+   "Issues": 0.2,
+   "Clean": 0.6
+  },
+  {
+   "Case": "bait-old-smell-nearby",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-paid-invoice-payment",
+   "Findings": 0.6,
+   "Issues": 0.4,
+   "Clean": 0.4
+  },
+  {
+   "Case": "bait-shortcut-field-guard",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-state-excluded-by-domain",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-style-and-tests",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  },
+  {
+   "Case": "bait-tuned-poll-interval",
+   "Findings": 0,
+   "Issues": 0,
+   "Clean": 1
+  }
+ ],
+ "ControlFindings": {
+  "Bait": 0.14285714285714285,
+  "Other": 0,
+  "BaitCases": 14,
+  "OtherCases": 0
+ },
+ "Tokens": {
+  "ColdPrompt": 6345.944444444444,
+  "ColdCached": 4152.888888888889,
+  "ColdCompletion": 1999.7222222222222,
+  "WarmPrompt": 6345.944444444444,
+  "WarmCached": 5918.222222222223,
+  "WarmCompletion": 2312.375
+ }
+}
