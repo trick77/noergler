@@ -411,8 +411,8 @@ nothing new or the budget trimmed it from the prompt, and a request for
 changes over an empty list (findings dropped, threads closed) is lowered. A
 verdict that matches keeps the model's rationale; a changed one gets a
 fixed line saying why. Under the list, when there
-is any, one line counts the earlier findings this push fixed and the findings
-validation dropped, or says the earlier findings could not be read from the
+is any, one line counts the earlier findings fixed since the previous review
+and the findings validation dropped, or says the earlier findings could not be read from the
 database and the list is this run's only. Repeats, the comment cap and
 inline posts Bitbucket refused are in the log, not in the line.
 
@@ -433,15 +433,15 @@ replacement; single-line replacements let Bitbucket render an "Apply suggestion"
 button.
 
 Then one summary comment per PR, edited in place on later runs. It opens with
-"PR review summary" ("PR Review-Zusammenfassung"), the last push's range
-under it on an incremental run, with one sentence on what that push alone
-changed. The model writes that sentence and the Overview into two separate
-fields, so the Overview stays the whole PR's whatever the push was; a full
-review's push sentence is not shown. Its sections, in order:
+"PR review summary" ("PR Review-Zusammenfassung"). Its sections, in order:
 
 1. Recommendation
 2. Issues and suggestions
-3. Overview
+3. Overview, on an incremental run closed by one paragraph "Change since the
+   previous review": the commit range from the last reviewed commit (several
+   pushes after a skipped or failed run) and one sentence on what it changed.
+   The model writes that sentence and the overview into two separate fields,
+   so the overview stays the whole PR's; a full review's sentence is not shown
 4. Review focus: up to three places of the diff a person should read first,
    each `file:line` and one sentence (`review_focus`). Code keeps a place only
    when the file was in the prompt and the line is one its diff shows: the

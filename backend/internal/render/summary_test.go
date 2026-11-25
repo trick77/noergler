@@ -285,17 +285,29 @@ func summaryCases() map[string]SummaryInput {
 	inc.IncrementalFrom = strings.Repeat("a", 40)
 	cases["incremental"] = inc
 
-	// The latest push on its own line; the Overview stays the PR's.
+	// The change since the previous review under the Overview, which stays
+	// the PR's.
 	incPush := inc
 	incPush.Summary.Overview = "Adds retries with backoff to the payment client."
 	incPush.Summary.LatestPush = "Fixes a typo in the\nretry log message."
 	cases["incremental_latest_push"] = incPush
 
-	// A long push sentence wraps inside its list item; a sentinel is dropped.
+	incPushDE := inc
+	incPushDE.Lang = lang.DE
+	incPushDE.Summary.Overview = "Ergänzt den Payment-Client um Retries mit Backoff."
+	incPushDE.Summary.LatestPush = "Fasst die Retry-Konstanten ohne Verhaltensänderung in einem Block zusammen."
+	cases["incremental_latest_push_de"] = incPushDE
+
+	// A long sentence wraps as prose; a sentinel is dropped.
 	incLong := inc
 	incLong.Summary.LatestPush = "Moves the retry policy into its own type, threads the caller's context through every " +
 		"attempt and replaces the fixed sleep with a jittered backoff that resets after a success."
 	cases["incremental_latest_push_wrapped"] = incLong
+	// Two pipes are not a table row here: the sentence still wraps.
+	incPipes := inc
+	incPipes.Summary.LatestPush = "Replaces the `a || b` fallback in the retry policy with an explicit check and threads " +
+		"the caller's context through every attempt."
+	cases["incremental_latest_push_pipes"] = incPipes
 	incNone := inc
 	incNone.Summary.LatestPush = "None."
 	cases["incremental_latest_push_sentinel"] = incNone
@@ -454,7 +466,7 @@ func TestTicketNeverSaysUnmet(t *testing.T) {
 	}
 }
 
-// The PR's whole diff unreadable: the latest push's proofs still show, with
+// The PR's whole diff unreadable: the reviewed range's proofs still show, with
 // a line saying they are all that was checked; none at all reads "not
 // checked", never "none shown".
 func TestTicketHistoryUnknown(t *testing.T) {
@@ -464,12 +476,33 @@ func TestTicketHistoryUnknown(t *testing.T) {
 	in.TicketComplianceCheck = true
 	in.ComplianceHistoryUnknown = true
 	in.ComplianceRequirements = []inference.ComplianceRequirement{{Requirement: "Does X", Met: true}}
-	if got := renderTicket(in); !strings.Contains(got, "Does X ✅") || !strings.Contains(got, "latest push only") {
+	if got := renderTicket(in); !strings.Contains(got, "Does X ✅") || !strings.Contains(got, "since the previous review only") {
 		t.Errorf("proofs without the note:\n%s", got)
 	}
 	in.ComplianceRequirements = []inference.ComplianceRequirement{}
 	if got := renderTicket(in); !strings.Contains(got, "Requirements not checked") || strings.Contains(got, "No requirement shown") {
 		t.Errorf("an unchecked history reads as none shown:\n%s", got)
+	}
+}
+
+// A commit range under the heading read as the scope of the review: nothing
+// stands between the heading and the recommendation, and the change since the
+// previous review is one paragraph closing the overview.
+func TestChangeClosesTheOverview(t *testing.T) {
+	in := base()
+	in.IncrementalFrom, in.ReviewedCommit = strings.Repeat("a", 40), strings.Repeat("b", 40)
+	in.Summary.Overview = "Adds retries."
+	in.Summary.LatestPush = "Fixes a typo\n\nin a log message."
+	in.Focus = []inference.FocusItem{{File: "a.go", Line: 1, Why: "Read this."}}
+	got := Summary(in)
+	for _, want := range []string{
+		"### PR review summary\n\n### Recommendation\n",
+		"### Overview\nAdds retries.\n\n_Change since the previous review_ (`aaaaaaaaaa` .. `bbbbbbbbbb`): " +
+			"Fixes a typo in a log message.\n\n### Review focus",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
 	}
 }
 

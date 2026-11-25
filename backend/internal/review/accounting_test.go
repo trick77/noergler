@@ -464,7 +464,7 @@ func TestSummaryCountsARetiredFinding(t *testing.T) {
 	h.r.reviewInline(context.Background(), prPayload(webhook.EventFromRefUpdated), false)
 
 	s := h.bb.Posted[0].Text
-	for _, want := range []string{"### Issues and suggestions\nNone.", "_1 earlier finding fixed by this push._", "**Approve ✅**"} {
+	for _, want := range []string{"### Issues and suggestions\nNone.", "_1 earlier finding fixed since the previous review._", "**Approve ✅**"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary lacks %q:\n%s", want, s)
 		}
@@ -484,7 +484,7 @@ func TestFullReviewSummaryListsEarlierOpenFindings(t *testing.T) {
 	if !strings.Contains(s, "1. new _(new)_\n2. old") {
 		t.Errorf("the full review must list the earlier open finding after the new issue:\n%s", s)
 	}
-	if strings.Contains(s, "fixed by this push") {
+	if strings.Contains(s, "fixed since the previous review") {
 		t.Errorf("a full review retires nothing:\n%s", s)
 	}
 }
@@ -497,7 +497,7 @@ func TestFirstReviewSummaryHasNoAccounting(t *testing.T) {
 	h.r.reviewInline(context.Background(), prPayload(webhook.EventOpened), false)
 
 	s := h.bb.Posted[0].Text
-	if strings.Contains(s, "fixed by this push") || strings.Contains(s, "dropped by validation") || strings.Contains(s, "_(new)_") {
+	if strings.Contains(s, "fixed since the previous review") || strings.Contains(s, "dropped by validation") || strings.Contains(s, "_(new)_") {
 		t.Errorf("a first review must not carry the accounting line or new markers:\n%s", s)
 	}
 }

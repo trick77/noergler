@@ -140,6 +140,14 @@ func indentedCode(line string) bool {
 	return strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
 }
 
+// wrapParagraph flattens text to one paragraph and wraps it. For a line known
+// to be prose: WrapProse takes two pipes (`a || b`) for a table row and leaves
+// it unwrapped.
+func wrapParagraph(text string) string {
+	text = strings.NewReplacer("\x00", "", "\x01", "").Replace(text)
+	return wrapLine(strings.Join(strings.Fields(text), " "), WrapWidth, "")
+}
+
 // wrapLine wraps one line, masking inline code spans first.
 //
 // prefix is a list marker; when given it goes on the first piece and

@@ -42,6 +42,12 @@ an incident or an eval run: read the reason before relaxing a rule.
   hunk triage ("Where to spend attention"), which the old schema threw
   away; checked by path and line only, never by what the sentence says
   (no judge).
+- Change line under the overview (user, 2026-11-25): under the heading,
+  "Last push: a .. b" read as the review's scope, as if only that part had
+  been reviewed, and the model's verb-first sentence ("Fasst … zusammen")
+  as being about the summary itself. Rejected: kept on top with "covers the
+  whole PR" (a line before the recommendation on every run); dropped (what
+  is new no longer shows on the PR).
 - Ticket check without ❌: a PR is a delta, so "not met" is never provable;
   the requirement can live in another file, an earlier PR, another repo or
   the pipeline. A requirement met by deployment scripts the PR did not

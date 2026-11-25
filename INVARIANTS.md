@@ -76,15 +76,17 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
   the cap; the list names how many. Earlier findings unreadable from the
   DB: never safeDB ("none" would approve), the summary says it lists this
   run's only, the verdict is lowered only for drops.
-  Heading "PR Review-Zusammenfassung" / "PR review summary", last push a
-  line under it, then Recommendation and the issue list before the
+  Heading "PR Review-Zusammenfassung" / "PR review summary", nothing under
+  it, then Recommendation and the issue list before the
   overview (user, 2026-11-19: what the reader acts on first). A section
   with only its sentinel is left out; overview, issues and recommendation
   always render. Review focus: at most 3 places, code keeps only a file the
   prompt carried and a line its diff shows (`ValidateFocus`), never a
   finding, never the verdict. Two schema slots, `overview` (the PR) and `latest_push`
-  (that push, incremental only, rendered on the last-push line): scope is
-  the schema's, never one prose field the model must keep PR-wide.
+  (incremental only, rendered under the overview): scope is
+  the schema's, never one prose field the model must keep PR-wide. The
+  summary labels the reviewed range "change since the previous review",
+  never "push" (user, 2026-11-25): it can span several pushes.
 - The overview carries over (user, 2026-10-28): every incremental review
   gets the last completed run's `overview` (`pull_requests.last_summary`,
   written by `InsertRun`, never the posted comment), below the posted
