@@ -174,13 +174,13 @@ type VisualLine struct {
 // Summary renders the PR summary comment: the whole PR, every open finding,
 // on every run.
 //
-// Section order is fixed (TestSummarySectionOrder): the PR summary heading
-// (with the last push on an incremental run), Recommendation, Issues and
-// suggestions, Overview, Review focus, Security and performance, Test
-// coverage, Strengths, Visual changes, the ticket block when a ticket is
-// linked, and the footnote after a horizontal rule. Overview, issues and
-// recommendation always render; any other section with nothing to say,
-// omitted or a sentinel, is left out.
+// Section order is fixed (TestSummarySectionOrder): the PR summary heading,
+// Recommendation, Issues and suggestions, Overview (with the change since
+// the previous review on an incremental run), Review focus, Security and
+// performance, Test coverage, Strengths, Visual changes, the ticket block
+// when a ticket is linked, and the footnote after a horizontal rule.
+// Overview, issues and recommendation always render; any other section with
+// nothing to say, omitted or a sentinel, is left out.
 func Summary(in SummaryInput) string {
 	if in.Lang != lang.EN {
 		in = swissInput(in)
@@ -191,23 +191,10 @@ func Summary(in SummaryInput) string {
 	var sections []string
 	p := in.Lang.Pick
 
-	// Named for the PR (user, 2026-10-28): the last push is one line under
-	// it, never the scope of the summary.
-	header := p("### PR Review-Zusammenfassung", "### PR review summary")
-	// The latest push gets its own line, filled from its own field, so the
-	// Overview below stays the whole PR's whatever the push was. A full
-	// review has no latest push: whatever the model put there is not shown.
-	if in.IncrementalFrom != "" && in.ReviewedCommit != "" {
-		line := fmt.Sprintf(p("- Letzter Push: `%s` .. `%s`", "- Last push: `%s` .. `%s`"),
-			ShortSHA(in.IncrementalFrom, 10), ShortSHA(in.ReviewedCommit, 10))
-		// Flattened to one paragraph first, then wrapped as the list item it
-		// is (hang indent). A sentinel says nothing about a push: dropped.
-		if push := strings.Join(strings.Fields(in.Summary.LatestPush), " "); push != "" && !IsNoneSentinel(push) {
-			line += " — " + push
-		}
-		header += "\n" + WrapProse(line)
-	}
-	sections = append(sections, header)
+	// Named for the PR (user, 2026-10-28), and nothing between it and the
+	// recommendation: a commit range there read as the scope of the review
+	// (user, 2026-11-25).
+	sections = append(sections, p("### PR Review-Zusammenfassung", "### PR review summary"))
 
 	// What the reader acts on first (the summary often goes unread past the
 	// top): the recommendation and the open findings, then what the PR
@@ -431,7 +418,31 @@ func renderOverview(in SummaryInput) string {
 	if in.Summary.Overview != "" {
 		body = WrapProse(strings.TrimSpace(in.Summary.Overview))
 	}
-	return p("### Überblick\n", "### Overview\n") + body
+	out := p("### Überblick\n", "### Overview\n") + body
+	if change := renderChange(in); change != "" {
+		out += "\n\n" + change
+	}
+	return out
+}
+
+// renderChange is the paragraph under the overview on what this run added to
+// the PR, filled from its own field so the overview stays the whole PR's.
+// Empty on a full review, whatever the model put there.
+//
+// "Since the previous review", never "push": the range starts at the last
+// reviewed commit and spans several pushes after a skipped or failed run.
+func renderChange(in SummaryInput) string {
+	if in.IncrementalFrom == "" || in.ReviewedCommit == "" {
+		return ""
+	}
+	line := fmt.Sprintf(in.Lang.Pick("_Änderung seit dem vorherigen Review_ (`%s` .. `%s`)",
+		"_Change since the previous review_ (`%s` .. `%s`)"),
+		ShortSHA(in.IncrementalFrom, 10), ShortSHA(in.ReviewedCommit, 10))
+	// A sentinel says nothing: dropped.
+	if change := strings.TrimSpace(in.Summary.LatestPush); change != "" && !IsNoneSentinel(change) {
+		line += ": " + change
+	}
+	return wrapParagraph(line)
 }
 
 func renderStrengths(in SummaryInput) string {
@@ -487,7 +498,7 @@ func notAssessable(s string) bool {
 }
 
 // renderAccounting is the line under the issues that says what the list
-// leaves out: earlier findings this push fixed and dropped ones. Empty when
+// leaves out: earlier findings this run retired and dropped ones. Empty when
 // there is nothing to say, so a first review reads as before.
 func renderAccounting(in SummaryInput) string {
 	p := in.Lang.Pick
@@ -498,7 +509,7 @@ func renderAccounting(in SummaryInput) string {
 	}
 	if in.FixedEarlier > 0 {
 		parts = append(parts, PluralIn(in.Lang, in.FixedEarlier, "früheres Finding", "frühere Findings",
-			"earlier finding", "earlier findings")+p(" mit diesem Push behoben.", " fixed by this push."))
+			"earlier finding", "earlier findings")+p(" seit dem vorherigen Review behoben.", " fixed since the previous review."))
 	}
 	if in.Dropped > 0 {
 		parts = append(parts, PluralIn(in.Lang, in.Dropped, "Finding", "Findings", "finding", "findings")+
@@ -657,8 +668,8 @@ func renderTicket(in SummaryInput) string {
 			lines = append(lines, fmt.Sprintf("- %s ✅", requirement))
 		}
 		if in.ComplianceHistoryUnknown {
-			lines = append(lines, p("_Nur aus dem letzten Push belegt: der Diff des ganzen PRs war nicht lesbar_",
-				"_Shown from the latest push only: the PR's whole diff could not be read_"))
+			lines = append(lines, p("_Nur aus der Änderung seit dem vorherigen Review belegt: der Diff des ganzen PRs war nicht lesbar_",
+				"_Shown from the change since the previous review only: the PR's whole diff could not be read_"))
 		}
 		return strings.Join(lines, "\n")
 	}

@@ -1031,8 +1031,8 @@ func TestIncrementalReview(t *testing.T) {
 		if h.st.Runs[0].FromCommit == nil || *h.st.Runs[0].FromCommit != "older" {
 			t.Error("the run row must record the incremental base")
 		}
-		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "### PR review summary\n- Last push: `older` .. ") {
-			t.Error("the PR summary must name the last push")
+		if len(h.bb.Posted) != 1 || !strings.Contains(h.bb.Posted[0].Text, "\n\n_Change since the previous review_ (`older` .. ") {
+			t.Error("the PR summary must name the change since the previous review")
 		}
 	})
 
