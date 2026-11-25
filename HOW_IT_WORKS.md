@@ -307,7 +307,9 @@ the template, then `{files}`, then `{cumulative_pr_diff}`, then
 `{previously_posted_findings}`. Substitution is literal string replacement, not
 templating: file content contains braces. Changed test screenshots, when any
 are sent, ride in a second user message after the prompt, so the prompt's
-text stays byte-identical for the cache.
+text stays byte-identical for the cache. On the Sol models only a call that
+continues an earlier request reads the cache (INVARIANTS: prompt and
+findings).
 
 Budgets come off the resolved context window through a trust curve (large
 advertised windows are the least trustworthy), minus an output reserve. The

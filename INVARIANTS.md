@@ -55,6 +55,18 @@ why. Behaviour pinned by a test is not repeated here: the test is the rule.
 
 ## Prompt and findings
 
+- Prefix cache on Sol (GPT-5.6 and later): written and read only at the end
+  of a message, never on the longest common prefix (OpenAI prompt-caching
+  guide, read 2026-11-25). A review is one user message, stable head then
+  the PR: its head is never read. Measured on `llm_calls`, 2026-10-12 to
+  2026-11-25, gpt-6.1-sol and gpt-6.2-sol over LiteLLM to Azure: 1131
+  reviews, 14 with a cache read, none partial; about 99 % of input reported
+  as cache write. Only a continued request can hit (Almanach note, tool
+  round). Explicit breakpoints (`prompt_cache_breakpoint`) would fix it;
+  Azure does not support them (Microsoft docs and staff answer, 2026-08,
+  not re-checked). The layout stays for its other reasons (user,
+  2026-11-25: fix the docs only); never rebuild it "for the cache" without
+  a measured read.
 - Summary = the whole PR on every run, never one push (user, 2026-10-28:
   "it's called SUMMARY"): the comment is replaced each run. Prompt names it
   the PR review summary; issue list = every open finding (`EarlierOpen` +

@@ -25,7 +25,7 @@ Built for the realities of enterprise setups: self-hosted Bitbucket Server, on-p
 - Bugs the model spots in code the PR did not touch are never posted; the run page lists them for someone to pick up
 - Jira ticket compliance per acceptance criterion; project rules via `AGENTS.md`
 - German (Swiss spelling) or English, per team and per user
-- Prompt laid out for the gateway's prefix cache: stable rules first, per-PR parts last
+- Prompt laid out stable rules first, per-PR parts last
 
 **Conversation**
 
@@ -416,7 +416,7 @@ Both `review.txt` and `mention.txt` in `backend/internal/prompts/` are ordered d
 
 Three reasons this matters, and they all push the same layout:
 
-- **Prompt cache reuse** — OpenAI-compatible prompt caching matches on the longest stable prefix. Keeping all variable content at the tail means the entire stable portion is served from cache on every subsequent call.
+- **Prompt cache reuse** — models before GPT-5.6 match on the longest stable prefix, so the stable portion is read from cache on a following call. GPT-5.6 and later (the Sol models) cache only up to the end of a message: a review is one user message whose tail differs per PR, so its stable head is never read there. What still hits is a call that continues an earlier request (the Almanach note, a tool round).
 - **"Lost in the middle"** — long-context LLMs recall the start and end of a prompt better than the middle. Putting the diff (the thing the model must reason about) at the very end of the context gives it the strongest recall.
 - **KV-cache eviction on very long contexts** — some long-context implementations evict middle tokens first under pressure. Stable rules at the top are cheap to lose; the diff at the bottom stays intact.
 
